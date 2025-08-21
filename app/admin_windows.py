@@ -288,7 +288,7 @@ class RegistrarPagoWindow:
         
         # Método de pago
         ttk.Label(main_frame, text="Método de Pago *", font=('TkDefaultFont', 18)).pack(anchor="w")
-        self.metodo_var = tk.StringVar(value="efectivo")
+        self.metodo_var = tk.StringVar(self.window,value="efectivo")
         metodo_frame = ttk.Frame(main_frame)
         metodo_frame.pack(fill="x", pady=(0, 30))
         
@@ -338,6 +338,10 @@ class RegistrarPagoWindow:
             datetime.strptime(self.fecha_entry.get().strip(), '%Y-%m-%d')
         except ValueError:
             messagebox.showerror("Error", "La fecha debe tener formato YYYY-MM-DD")
+            return False
+        metodo = self.metodo_var.get()
+        if metodo not in ("efectivo", "transferencia"):
+            messagebox.showerror("Error", "Seleccione un método de pago")
             return False
         
         return True

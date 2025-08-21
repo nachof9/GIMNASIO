@@ -9,11 +9,12 @@ COLORS = {
     "SUCCESS_GREEN": "#28a745",
     "INFO_BLUE": "#17a2b8",
     'ACTIVE_GREEN': '#4CAF50', 
-    'EXPIRED_RED': '#F44336',
+    'ERROR_RED': '#F44336',
     'TEXT_DARK': '#1B1B1B',
     'WHITE': '#FFFFFF',
     'TEXT_SECONDARY': '#6C757D',
     'SOMA_ORANGE_DARK': "#FC3903",
+    'EXPIRED_RED': '#F44336',
     'WARNING_AMBER': '#FF9800'    
 }
 
