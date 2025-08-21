@@ -1,0 +1,43 @@
+Requirement already satisfied: customtkinter in c:\python311\lib\site-packages (5.2.2)
+Requirement already satisfied: pandas in c:\python311\lib\site-packages (2.3.1)
+Requirement already satisfied: openpyxl in c:\python311\lib\site-packages (3.1.5)
+Collecting matplotlib
+  Obtaining dependency information for matplotlib from https://files.pythonhosted.org/packages/b7/81/3200b792a5e8b354f31f4101ad7834743ad07b6d620259f2059317b25e4d/matplotlib-3.10.5-cp311-cp311-win_amd64.whl.metadata
+  Downloading matplotlib-3.10.5-cp311-cp311-win_amd64.whl.metadata (11 kB)
+Requirement already satisfied: darkdetect in c:\python311\lib\site-packages (from customtkinter) (0.8.0)
+Requirement already satisfied: packaging in c:\python311\lib\site-packages (from customtkinter) (25.0)
+Requirement already satisfied: numpy>=1.23.2 in c:\python311\lib\site-packages (from pandas) (2.3.1)
+Requirement already satisfied: python-dateutil>=2.8.2 in c:\python311\lib\site-packages (from pandas) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in c:\python311\lib\site-packages (from pandas) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in c:\python311\lib\site-packages (from pandas) (2025.2)
+Requirement already satisfied: et-xmlfile in c:\python311\lib\site-packages (from openpyxl) (2.0.0)
+Collecting contourpy>=1.0.1 (from matplotlib)
+  Obtaining dependency information for contourpy>=1.0.1 from https://files.pythonhosted.org/packages/98/4b/9bd370b004b5c9d8045c6c33cf65bae018b27aca550a3f657cdc99acdbd8/contourpy-1.3.3-cp311-cp311-win_amd64.whl.metadata
+  Downloading contourpy-1.3.3-cp311-cp311-win_amd64.whl.metadata (5.5 kB)
+Collecting cycler>=0.10 (from matplotlib)
+  Obtaining dependency information for cycler>=0.10 from https://files.pythonhosted.org/packages/e7/05/c19819d5e3d95294a6f5947fb9b9629efb316b96de511b418c53d245aae6/cycler-0.12.1-py3-none-any.whl.metadata
+  Downloading cycler-0.12.1-py3-none-any.whl.metadata (3.8 kB)
+Collecting fonttools>=4.22.0 (from matplotlib)
+  Obtaining dependency information for fonttools>=4.22.0 from https://files.pythonhosted.org/packages/ab/25/5aa7ca24b560b2f00f260acf32c4cf29d7aaf8656e159a336111c18bc345/fonttools-4.59.0-cp311-cp311-win_amd64.whl.metadata
+  Downloading fonttools-4.59.0-cp311-cp311-win_amd64.whl.metadata (110 kB)
+     -------------------------------------- 110.1/110.1 kB 1.3 MB/s eta 0:00:00
+Collecting kiwisolver>=1.3.1 (from matplotlib)
+  Obtaining dependency information for kiwisolver>=1.3.1 from https://files.pythonhosted.org/packages/3b/c6/f8df8509fd1eee6c622febe54384a96cfaf4d43bf2ccec7a0cc17e4715c9/kiwisolver-1.4.9-cp311-cp311-win_amd64.whl.metadata
+  Downloading kiwisolver-1.4.9-cp311-cp311-win_amd64.whl.metadata (6.4 kB)
+Requirement already satisfied: pillow>=8 in c:\python311\lib\site-packages (from matplotlib) (11.3.0)
+Collecting pyparsing>=2.3.1 (from matplotlib)
+  Obtaining dependency information for pyparsing>=2.3.1 from https://files.pythonhosted.org/packages/05/e7/df2285f3d08fee213f2d041540fa4fc9ca6c2d44cf36d3a035bf2a8d2bcc/pyparsing-3.2.3-py3-none-any.whl.metadata
+  Downloading pyparsing-3.2.3-py3-none-any.whl.metadata (5.0 kB)
+Requirement already satisfied: six>=1.5 in c:\python311\lib\site-packages (from python-dateutil>=2.8.2->pandas) (1.17.0)
+Downloading matplotlib-3.10.5-cp311-cp311-win_amd64.whl (8.1 MB)
+   ---------------------------------------- 8.1/8.1 MB 1.9 MB/s eta 0:00:00
+Downloading contourpy-1.3.3-cp311-cp311-win_amd64.whl (225 kB)
+   ---------------------------------------- 225.2/225.2 kB 3.5 MB/s eta 0:00:00
+Downloading cycler-0.12.1-py3-none-any.whl (8.3 kB)
+Downloading fonttools-4.59.0-cp311-cp311-win_amd64.whl (2.3 MB)
+   ---------------------------------------- 2.3/2.3 MB 1.5 MB/s eta 0:00:00
+Downloading kiwisolver-1.4.9-cp311-cp311-win_amd64.whl (73 kB)
+   ---------------------------------------- 73.8/73.8 kB 1.4 MB/s eta 0:00:00
+Downloading pyparsing-3.2.3-py3-none-any.whl (111 kB)
+   ---------------------------------------- 111.1/111.1 kB 3.2 MB/s eta 0:00:00
+Installing collected packages: pyparsing, kiwisolver, fonttools, cycler, contourpy, matplotlib
