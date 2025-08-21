@@ -217,7 +217,7 @@ class ConsultaKioscoFrame(ctk.CTkFrame):
         else:
             try:
                 dni = int(dni_text)
-                resultado = self.db_manager.obtener_estado_socio(dni)
+                resultado = self.db_manager.consultar_estado_socio(dni)
                 
                 self._query_cache[cache_key] = {
                     'data': resultado,
@@ -1751,7 +1751,17 @@ class PagosFrame(ctk.CTkFrame):
         self.dni_filter.pack(side="left")
         
         self.dni_filter.bind('<KeyRelease>', self._debounced_filter)
-        
+
+         # Botón para registrar un nuevo pago
+        add_btn = ctk.CTkButton(
+            filter_frame,
+            text="➕ Agregar Pago",
+            command=self.agregar_pago,
+            width=140,
+            height=32
+        )
+        add_btn.pack(side="right", padx=10, pady=10)
+
         # Botón refrescar
         refresh_btn = ctk.CTkButton(
             filter_frame,
@@ -1824,6 +1834,18 @@ class PagosFrame(ctk.CTkFrame):
         )
         self.promedio_label.pack(side="left", padx=20, pady=10)
     
+    def agregar_pago(self):
+        """Abre la ventana para registrar un nuevo pago"""
+        dni_text = self.dni_filter.get().strip()
+        dni = int(dni_text) if dni_text.isdigit() else None
+
+        def callback():
+            # Limpiamos la caché para mostrar el nuevo pago
+            self._refresh_cache = None
+            self.refrescar_pagos()
+
+        RegistrarPagoWindow(self, self.db_manager, dni=dni, callback=callback)
+
     def refrescar_pagos(self):
         """Refresca la lista de pagos desde la base de datos con cache"""
         current_time = datetime.now().timestamp()
