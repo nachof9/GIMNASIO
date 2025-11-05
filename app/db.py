@@ -110,7 +110,7 @@ class DatabaseManager:
         """Detiene el sistema de backup automático"""
         if hasattr(self, 'backup_manager'):
             self.backup_manager.stop_auto_backup_system()
-    
+
     # SOCIOS
     def agregar_socio(self, dni: int, nombre: str, email: Optional[str], telefono: Optional[str], fecha_alta: str) -> None:
         """Agrega un nuevo socio"""
@@ -143,6 +143,37 @@ class DatabaseManager:
             conn.commit()
             logging.info(f"Socio eliminado: DNI {dni}")
     
+    def cambiar_dni_socio(self, dni_actual: int, nuevo_dni: int) -> None:
+        """Cambia el DNI de un socio y actualiza referencias en pagos/ingresos.
+
+        Nota: No se usa ON UPDATE CASCADE. Actualizamos manualmente en una transacción.
+        """
+        if dni_actual == nuevo_dni:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Validaciones
+            cursor.execute('SELECT 1 FROM socios WHERE dni=?', (dni_actual,))
+            if cursor.fetchone() is None:
+                raise ValueError(f"No existe socio con DNI {dni_actual}")
+            cursor.execute('SELECT 1 FROM socios WHERE dni=?', (nuevo_dni,))
+            if cursor.fetchone() is not None:
+                raise ValueError(f"Ya existe un socio con DNI {nuevo_dni}")
+
+            try:
+                cursor.execute('BEGIN')
+                # Actualizar pagos e ingresos primero (no hay FK ON UPDATE)
+                cursor.execute('UPDATE pagos SET dni=? WHERE dni=?', (nuevo_dni, dni_actual))
+                cursor.execute('UPDATE ingresos SET dni=? WHERE dni=?', (nuevo_dni, dni_actual))
+                # Actualizar socio
+                cursor.execute('UPDATE socios SET dni=? WHERE dni=?', (nuevo_dni, dni_actual))
+                conn.commit()
+                logging.info(f"DNI cambiado: {dni_actual} -> {nuevo_dni}")
+            except Exception as e:
+                conn.rollback()
+                logging.error(f"Error cambiando DNI {dni_actual} -> {nuevo_dni}: {e}")
+                raise
+    
     def obtener_socio(self, dni: int) -> Optional[Dict]:
         """Obtiene un socio por DNI"""
         with sqlite3.connect(self.db_path) as conn:
@@ -151,6 +182,26 @@ class DatabaseManager:
             cursor.execute('SELECT * FROM socios WHERE dni=?', (dni,))
             row = cursor.fetchone()
             return dict(row) if row else None
+    
+    def buscar_socios(self, texto: str, limite: int = 50) -> List[Dict]:
+        """Busca socios por nombre o coincidencia de DNI (texto parcial)."""
+        texto = texto.strip()
+        if not texto:
+            return []
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            like = f"%{texto}%"
+            cursor.execute(
+                '''
+                SELECT dni, nombre, email, telefono
+                FROM socios
+                WHERE nombre LIKE ? OR CAST(dni AS TEXT) LIKE ?
+                ORDER BY nombre
+                LIMIT ?
+                ''', (like, like, limite)
+            )
+            return [dict(row) for row in cursor.fetchall()]
     
     # PAGOS
     def registrar_pago(self, dni: int, monto: float, fecha_pago: str, metodo: str) -> None:
@@ -163,6 +214,43 @@ class DatabaseManager:
             ''', (dni, monto, fecha_pago, metodo))
             conn.commit()
             logging.info(f"Pago registrado: DNI {dni}, ${monto}, {metodo}")
+    
+    def obtener_pago(self, pago_id: int) -> Optional[Dict]:
+        """Obtiene un pago por ID"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM pagos WHERE id=?', (pago_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def editar_pago(self, pago_id: int, dni: int, monto: float, fecha_pago: str, metodo: str) -> None:
+        """Edita un pago existente"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Validar existencia de socio destino
+            cursor.execute('SELECT 1 FROM socios WHERE dni=?', (dni,))
+            if cursor.fetchone() is None:
+                raise ValueError(f"No existe socio con DNI {dni}")
+            cursor.execute('''
+                UPDATE pagos
+                SET dni = ?, monto = ?, fecha_pago = ?, metodo_pago = ?
+                WHERE id = ?
+            ''', (dni, monto, fecha_pago, metodo, pago_id))
+            if cursor.rowcount == 0:
+                raise ValueError(f"Pago id {pago_id} no encontrado")
+            conn.commit()
+            logging.info(f"Pago editado: ID {pago_id} (DNI {dni}, ${monto}, {metodo})")
+
+    def eliminar_pago(self, pago_id: int) -> None:
+        """Elimina un pago por ID"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM pagos WHERE id = ?', (pago_id,))
+            if cursor.rowcount == 0:
+                raise ValueError(f"Pago id {pago_id} no encontrado")
+            conn.commit()
+            logging.info(f"Pago eliminado: ID {pago_id}")
     
     def obtener_pagos_por_dni(self, dni: int) -> List[Dict]:
         """Obtiene todos los pagos de un socio"""
@@ -453,4 +541,5 @@ class DatabaseManager:
             logging.error(f"Error importando pagos: {e}")
             raise
     def obtener_socio_por_dni(self, dni):
-         return self.obtener_socio(dni)
+        """Obtiene un socio por DNI (alias para obtener_socio)"""
+        return self.obtener_socio(dni)

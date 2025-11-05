@@ -66,8 +66,9 @@ class ImportExportManager:
             )
             
             if filename:
-                # Aquí va tu lógica de exportación
-                pass
+                self.db_manager.exportar_ingresos_excel(filename, rango)
+                messagebox.showinfo("Éxito", f"Ingresos exportados a:\n{filename}")
+                return filename
                 
         except Exception as e:
             messagebox.showerror("Error", f"Error al exportar ingresos: {str(e)}")

@@ -159,12 +159,11 @@ class EditarSocioWindow:
                                  font=('TkDefaultFont', 28, 'bold'))
         title_label.pack(pady=(0, 30))
         
-        # DNI (solo lectura)
-        ttk.Label(main_frame, text="DNI", font=('TkDefaultFont', 18)).pack(anchor="w")
-        dni_entry = ttk.Entry(main_frame, font=('TkDefaultFont', 18))
-        dni_entry.insert(0, str(self.dni))
-        dni_entry.configure(state="disabled")
-        dni_entry.pack(fill="x", pady=(0, 15))
+        # DNI (editable)
+        ttk.Label(main_frame, text="DNI *", font=('TkDefaultFont', 18)).pack(anchor="w")
+        self.dni_entry = ttk.Entry(main_frame, font=('TkDefaultFont', 18))
+        self.dni_entry.insert(0, str(self.dni))
+        self.dni_entry.pack(fill="x", pady=(0, 15))
         
         # Nombre
         ttk.Label(main_frame, text="Nombre *", font=('TkDefaultFont', 18)).pack(anchor="w")
@@ -197,6 +196,12 @@ class EditarSocioWindow:
         self.window.bind('<Return>', lambda e: self.guardar())
     
     def validar_datos(self) -> bool:
+        # DNI
+        dni_text = self.dni_entry.get().strip()
+        if not dni_text or not dni_text.isdigit() or len(dni_text) < 7 or len(dni_text) > 8:
+            messagebox.showerror("Error", "El DNI debe ser numérico de 7-8 dígitos")
+            return False
+
         # Nombre
         if not self.nombre_entry.get().strip():
             messagebox.showerror("Error", "El nombre es obligatorio")
@@ -215,10 +220,16 @@ class EditarSocioWindow:
             return
         
         try:
+            nuevo_dni = int(self.dni_entry.get().strip())
             nombre = self.nombre_entry.get().strip()
             email = self.email_entry.get().strip() or None
             telefono = self.telefono_entry.get().strip() or None
-            
+
+            # Si cambió el DNI, actualizar en base
+            if nuevo_dni != self.dni:
+                self.db_manager.cambiar_dni_socio(self.dni, nuevo_dni)
+                self.dni = nuevo_dni
+
             self.db_manager.editar_socio(self.dni, nombre, email, telefono)
             
             messagebox.showinfo("Éxito", f"Socio {nombre} actualizado correctamente")
@@ -273,7 +284,25 @@ class RegistrarPagoWindow:
         # DNI
         ttk.Label(main_frame, text="DNI *", font=('TkDefaultFont', 18)).pack(anchor="w")
         self.dni_entry = ttk.Entry(main_frame, font=('TkDefaultFont', 18))
-        self.dni_entry.pack(fill="x", pady=(0, 15))
+        self.dni_entry.pack(fill="x", pady=(0, 10))
+
+        # Búsqueda por nombre/apellido
+        ttk.Label(main_frame, text="Buscar socio (Nombre o apellido)", font=('TkDefaultFont', 14)).pack(anchor="w")
+        search_frame = ttk.Frame(main_frame)
+        search_frame.pack(fill="both", expand=False, pady=(0, 10))
+        self.search_entry = ttk.Entry(search_frame, font=('TkDefaultFont', 14))
+        self.search_entry.pack(fill="x")
+        self.search_entry.bind('<KeyRelease>', self._actualizar_sugerencias)
+        # Navegación por teclado en sugerencias
+        self.search_entry.bind('<Down>', self._focus_suggestions_down)
+        self.search_entry.bind('<Up>', self._focus_suggestions_up)
+        self.search_entry.bind('<Return>', self._enter_desde_entry)
+        
+        self.suggestions = tk.Listbox(main_frame, height=5)
+        self.suggestions.pack(fill="x", pady=(5, 15))
+        self.suggestions.bind('<<ListboxSelect>>', self._seleccionar_sugerencia)
+        self.suggestions.bind('<Return>', self._enter_desde_listbox)
+        # Las teclas de flecha funcionan por defecto dentro del Listbox.
         
         # Monto
         ttk.Label(main_frame, text="Monto *", font=('TkDefaultFont', 18)).pack(anchor="w")
@@ -306,6 +335,84 @@ class RegistrarPagoWindow:
         
         # Bind Enter para registrar
         self.window.bind('<Return>', lambda e: self.registrar())
+
+    def _actualizar_sugerencias(self, event=None):
+        texto = self.search_entry.get().strip()
+        self.suggestions.delete(0, tk.END)
+        if not texto:
+            return
+        try:
+            resultados = self.db_manager.buscar_socios(texto)
+            for s in resultados:
+                display = f"{s['nombre']} (DNI {s['dni']})"
+                self.suggestions.insert(tk.END, display)
+            # Preseleccionar el primer elemento para facilitar Enter directo
+            if self.suggestions.size() > 0:
+                self.suggestions.selection_clear(0, tk.END)
+                self.suggestions.selection_set(0)
+                self.suggestions.activate(0)
+        except Exception:
+            pass
+
+    def _focus_suggestions_down(self, event=None):
+        # Desde el Entry: mover foco a la lista y bajar una posición
+        if self.suggestions.size() == 0:
+            return 'break'
+        self.suggestions.focus_set()
+        sel = self.suggestions.curselection()
+        idx = sel[0] if sel else -1
+        new_idx = min(idx + 1, self.suggestions.size() - 1)
+        self.suggestions.selection_clear(0, tk.END)
+        self.suggestions.selection_set(new_idx)
+        self.suggestions.activate(new_idx)
+        self.suggestions.see(new_idx)
+        return 'break'
+
+    def _focus_suggestions_up(self, event=None):
+        # Desde el Entry: mover foco a la lista y subir una posición
+        if self.suggestions.size() == 0:
+            return 'break'
+        self.suggestions.focus_set()
+        sel = self.suggestions.curselection()
+        # Si no hay selección previa, ir al último
+        idx = sel[0] if sel else self.suggestions.size()
+        new_idx = max(idx - 1, 0)
+        self.suggestions.selection_clear(0, tk.END)
+        self.suggestions.selection_set(new_idx)
+        self.suggestions.activate(new_idx)
+        self.suggestions.see(new_idx)
+        return 'break'
+
+    def _enter_desde_entry(self, event=None):
+        # Si hay sugerencias, seleccionar la actual (o primera) y aplicar
+        if self.suggestions.size() == 0:
+            return None  # No bloquear Enter si no hay sugerencias
+        sel = self.suggestions.curselection()
+        if not sel:
+            idx = 0
+            self.suggestions.selection_clear(0, tk.END)
+            self.suggestions.selection_set(idx)
+            self.suggestions.activate(idx)
+        # Ejecutar selección y evitar que el Enter dispare Registrar
+        self._seleccionar_sugerencia()
+        return 'break'
+
+    def _enter_desde_listbox(self, event=None):
+        # Confirmar la sugerencia seleccionada
+        self._seleccionar_sugerencia()
+        return 'break'
+
+    def _seleccionar_sugerencia(self, event=None):
+        sel = self.suggestions.curselection()
+        if not sel:
+            return
+        texto = self.suggestions.get(sel[0])
+        # Extraer DNI al final del texto
+        m = re.search(r'DNI\s(\d+)', texto)
+        if m:
+            self.dni_entry.delete(0, tk.END)
+            self.dni_entry.insert(0, m.group(1))
+            self.monto_entry.focus()
     
     def validar_datos(self) -> bool:
         # DNI
@@ -371,3 +478,183 @@ class RegistrarPagoWindow:
     
     def cancelar(self):
         self.window.destroy()
+
+class EditarPagoWindow:
+    def __init__(self, parent, db_manager, pago_id: int, callback: Optional[Callable] = None):
+        self.db_manager = db_manager
+        self.pago_id = pago_id
+        self.callback = callback
+
+        self.pago = db_manager.obtener_pago(pago_id)
+        if not self.pago:
+            messagebox.showerror("Error", "Pago no encontrado")
+            return
+
+        self.window = tk.Toplevel(parent)
+        self.window.title("Editar Pago")
+        self.window.geometry("500x500")
+        self.window.transient(parent)
+        self.window.grab_set()
+
+        # Centrar
+        self.window.update_idletasks()
+        x = (self.window.winfo_screenwidth() // 2) - (500 // 2)
+        y = (self.window.winfo_screenheight() // 2) - (500 // 2)
+        self.window.geometry(f"500x500+{x}+{y}")
+
+        self._create_widgets()
+
+    def _create_widgets(self):
+        main = ttk.Frame(self.window)
+        main.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ttk.Label(main, text=f"ID Pago: {self.pago_id}", font=('TkDefaultFont', 12)).pack(anchor='w', pady=(0, 10))
+
+        # DNI
+        ttk.Label(main, text="DNI *", font=('TkDefaultFont', 18)).pack(anchor='w')
+        self.dni_entry = ttk.Entry(main, font=('TkDefaultFont', 18))
+        self.dni_entry.insert(0, str(self.pago['dni']))
+        self.dni_entry.pack(fill='x', pady=(0, 10))
+
+        # Buscar socio por nombre (opcional)
+        ttk.Label(main, text="Buscar socio (Nombre o apellido)", font=('TkDefaultFont', 12)).pack(anchor='w')
+        self.search_entry = ttk.Entry(main, font=('TkDefaultFont', 12))
+        self.search_entry.pack(fill='x')
+        self.search_entry.bind('<KeyRelease>', self._actualizar_sugerencias)
+        # Navegación por teclado en sugerencias
+        self.search_entry.bind('<Down>', self._focus_suggestions_down)
+        self.search_entry.bind('<Up>', self._focus_suggestions_up)
+        self.search_entry.bind('<Return>', self._enter_desde_entry)
+        self.suggestions = tk.Listbox(main, height=4)
+        self.suggestions.pack(fill='x', pady=(5, 10))
+        self.suggestions.bind('<<ListboxSelect>>', self._seleccionar_sugerencia)
+        self.suggestions.bind('<Return>', self._enter_desde_listbox)
+
+        # Monto
+        ttk.Label(main, text="Monto *", font=('TkDefaultFont', 18)).pack(anchor='w')
+        self.monto_entry = ttk.Entry(main, font=('TkDefaultFont', 18))
+        self.monto_entry.insert(0, str(self.pago['monto']))
+        self.monto_entry.pack(fill='x', pady=(0, 10))
+
+        # Fecha
+        ttk.Label(main, text="Fecha de Pago *", font=('TkDefaultFont', 18)).pack(anchor='w')
+        self.fecha_entry = ttk.Entry(main, font=('TkDefaultFont', 18))
+        self.fecha_entry.insert(0, self.pago['fecha_pago'])
+        self.fecha_entry.pack(fill='x', pady=(0, 10))
+
+        # Método
+        ttk.Label(main, text="Método de Pago *", font=('TkDefaultFont', 18)).pack(anchor='w')
+        self.metodo_var = tk.StringVar(self.window, value=self.pago['metodo_pago'])
+        metodo_frame = ttk.Frame(main)
+        metodo_frame.pack(fill='x', pady=(0, 20))
+        ttk.Radiobutton(metodo_frame, text="Efectivo", variable=self.metodo_var, value="efectivo", font=('TkDefaultFont', 16)).pack(side='left', padx=(0, 20))
+        ttk.Radiobutton(metodo_frame, text="Transferencia", variable=self.metodo_var, value="transferencia", font=('TkDefaultFont', 16)).pack(side='left')
+
+        # Botones
+        btn_frame = ttk.Frame(main)
+        btn_frame.pack(fill='x')
+        ttk.Button(btn_frame, text="Cancelar", command=self.window.destroy).pack(side='right', padx=(10,0))
+        ttk.Button(btn_frame, text="Guardar", command=self._guardar).pack(side='right')
+
+        self.window.bind('<Return>', lambda e: self._guardar())
+
+    def _actualizar_sugerencias(self, event=None):
+        texto = self.search_entry.get().strip()
+        self.suggestions.delete(0, tk.END)
+        if not texto:
+            return
+        try:
+            resultados = self.db_manager.buscar_socios(texto)
+            for s in resultados:
+                self.suggestions.insert(tk.END, f"{s['nombre']} (DNI {s['dni']})")
+            if self.suggestions.size() > 0:
+                self.suggestions.selection_clear(0, tk.END)
+                self.suggestions.selection_set(0)
+                self.suggestions.activate(0)
+        except Exception:
+            pass
+
+    def _focus_suggestions_down(self, event=None):
+        if self.suggestions.size() == 0:
+            return 'break'
+        self.suggestions.focus_set()
+        sel = self.suggestions.curselection()
+        idx = sel[0] if sel else -1
+        new_idx = min(idx + 1, self.suggestions.size() - 1)
+        self.suggestions.selection_clear(0, tk.END)
+        self.suggestions.selection_set(new_idx)
+        self.suggestions.activate(new_idx)
+        self.suggestions.see(new_idx)
+        return 'break'
+
+    def _focus_suggestions_up(self, event=None):
+        if self.suggestions.size() == 0:
+            return 'break'
+        self.suggestions.focus_set()
+        sel = self.suggestions.curselection()
+        idx = sel[0] if sel else self.suggestions.size()
+        new_idx = max(idx - 1, 0)
+        self.suggestions.selection_clear(0, tk.END)
+        self.suggestions.selection_set(new_idx)
+        self.suggestions.activate(new_idx)
+        self.suggestions.see(new_idx)
+        return 'break'
+
+    def _enter_desde_entry(self, event=None):
+        if self.suggestions.size() == 0:
+            return None
+        sel = self.suggestions.curselection()
+        if not sel:
+            idx = 0
+            self.suggestions.selection_clear(0, tk.END)
+            self.suggestions.selection_set(idx)
+            self.suggestions.activate(idx)
+        self._seleccionar_sugerencia()
+        return 'break'
+
+    def _enter_desde_listbox(self, event=None):
+        self._seleccionar_sugerencia()
+        return 'break'
+
+    def _seleccionar_sugerencia(self, event=None):
+        sel = self.suggestions.curselection()
+        if not sel:
+            return
+        texto = self.suggestions.get(sel[0])
+        m = re.search(r'DNI\s(\d+)', texto)
+        if m:
+            self.dni_entry.delete(0, tk.END)
+            self.dni_entry.insert(0, m.group(1))
+
+    def _guardar(self):
+        # Validaciones
+        dni_text = self.dni_entry.get().strip()
+        if not dni_text.isdigit():
+            messagebox.showerror("Error", "El DNI debe ser numérico")
+            return
+        try:
+            monto = float(self.monto_entry.get().strip())
+            if monto <= 0:
+                raise ValueError()
+        except Exception:
+            messagebox.showerror("Error", "El monto debe ser mayor a 0")
+            return
+        fecha = self.fecha_entry.get().strip()
+        try:
+            datetime.strptime(fecha, '%Y-%m-%d')
+        except ValueError:
+            messagebox.showerror("Error", "La fecha debe tener formato YYYY-MM-DD")
+            return
+        metodo = self.metodo_var.get()
+        if metodo not in ("efectivo", "transferencia"):
+            messagebox.showerror("Error", "Seleccione un método de pago")
+            return
+
+        try:
+            self.db_manager.editar_pago(self.pago_id, int(dni_text), monto, fecha, metodo)
+            messagebox.showinfo("Éxito", "Pago actualizado correctamente")
+            if self.callback:
+                self.callback()
+            self.window.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al actualizar pago: {str(e)}")

@@ -1,24 +1,29 @@
 import sqlite3
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from .config import ALERT_CONFIG, DIAS_CUOTA
 
 class DashboardManager:
     def __init__(self, db_path: str):
         self.db_path = db_path
     
-    def get_dashboard_data(self) -> Dict:
-        """Obtiene todos los datos para el dashboard inteligente"""
+    def get_dashboard_data(self, range_key: Optional[str] = None) -> Dict:
+        """Obtiene todos los datos para el dashboard inteligente.
+        range_key puede ser: '1d','7d','30d','90d','all'.
+        """
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
+            date_from, date_to = self._get_range_bounds(range_key)
             
             dashboard_data = {
                 "kpis": self._get_kpis(conn),
                 "alerts": self._get_alerts(conn),
                 "quick_actions": self._get_quick_actions(conn),
                 "recent_activity": self._get_recent_activity(conn),
-                "trends": self._get_trends(conn)
+                "trends": self._get_trends(conn),
+                "income_series": self._get_income_series(conn, date_from, date_to),
+                "payment_methods": self._get_payment_methods_split(conn)
             }
             
             conn.close()
@@ -27,6 +32,22 @@ class DashboardManager:
         except Exception as e:
             print(f"Error obteniendo datos del dashboard: {e}")
             return self._get_empty_dashboard()
+    
+    def _get_range_bounds(self, range_key: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        if not range_key or range_key == 'all':
+            return None, None
+        now = datetime.now().date()
+        if range_key == '1d':
+            start = now
+        elif range_key == '7d':
+            start = now - timedelta(days=6)
+        elif range_key == '30d':
+            start = now - timedelta(days=29)
+        elif range_key == '90d':
+            start = now - timedelta(days=89)
+        else:
+            start = now - timedelta(days=29)
+        return start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
     
     def _get_kpis(self, conn: sqlite3.Connection) -> Dict:
         """Obtiene KPIs principales"""
@@ -54,6 +75,24 @@ class DashboardManager:
             WHERE fecha_pago >= ?
         """, (primer_dia_mes,))
         ingresos_mes = cursor.fetchone()[0]
+
+        # Nuevos socios del mes
+        cursor.execute("""
+            SELECT COUNT(*) FROM socios
+            WHERE strftime('%Y-%m', fecha_alta) = strftime('%Y-%m', 'now')
+        """)
+        nuevos_mes = cursor.fetchone()[0]
+
+        # Renovaciones del mes (socios con pago este mes y al menos un pago previo antes de este mes)
+        cursor.execute("""
+            SELECT COUNT(DISTINCT p.dni) FROM pagos p
+            WHERE strftime('%Y-%m', p.fecha_pago) = strftime('%Y-%m','now')
+              AND EXISTS (
+                SELECT 1 FROM pagos p2
+                WHERE p2.dni = p.dni AND p2.fecha_pago < date('now','start of month')
+              )
+        """)
+        renovaciones_mes = cursor.fetchone()[0]
         
         # Visitas de hoy
         hoy = datetime.now().strftime('%Y-%m-%d')
@@ -79,6 +118,8 @@ class DashboardManager:
             "socios_inactivos": total_socios - socios_activos,
             "tasa_actividad": round((socios_activos / total_socios * 100) if total_socios > 0 else 0, 1),
             "ingresos_mes": ingresos_mes,
+            "nuevos_mes": nuevos_mes,
+            "renovaciones_mes": renovaciones_mes,
             "visitas_hoy": visitas_hoy,
             "promedio_visitas_diarias": promedio_visitas
         }
@@ -88,20 +129,20 @@ class DashboardManager:
         alerts = []
         cursor = conn.cursor()
         
-        # Alertas de vencimientos próximos
+        # Alertas de vencimientos próximos (calcula fecha de vencimiento real)
         for dias in ALERT_CONFIG["vencimiento_dias"]:
-            fecha_vencimiento = (datetime.now() + timedelta(days=dias)).strftime('%Y-%m-%d')
-            fecha_limite = (datetime.now() - timedelta(days=DIAS_CUOTA - dias)).strftime('%Y-%m-%d')
-            
-            cursor.execute("""
-                SELECT s.nombre, s.dni, MAX(p.fecha_pago) as ultima_cuota
+            sql = f"""
+                SELECT s.nombre, s.dni,
+                       DATE(MAX(p.fecha_pago), '+{DIAS_CUOTA} days') AS fecha_vencimiento,
+                       MAX(p.fecha_pago) AS ultima_cuota
                 FROM socios s
                 JOIN pagos p ON s.dni = p.dni
-                WHERE p.fecha_pago = ?
                 GROUP BY s.dni
+                HAVING DATE(MAX(p.fecha_pago), '+{DIAS_CUOTA} days') = DATE('now', '+{dias} days')
+                ORDER BY fecha_vencimiento ASC
                 LIMIT 5
-            """, (fecha_limite,))
-            
+            """
+            cursor.execute(sql)
             vencimientos = cursor.fetchall()
             if vencimientos:
                 alerts.append({
@@ -266,6 +307,39 @@ class DashboardManager:
         return {
             "visitas_diarias": list(reversed(visitas_por_dia))
         }
+
+    def _get_income_series(self, conn: sqlite3.Connection, date_from: Optional[str], date_to: Optional[str]) -> List[Dict]:
+        cursor = conn.cursor()
+        # Si no hay rango, usar últimos 30 días
+        if not date_from or not date_to:
+            date_to = datetime.now().strftime('%Y-%m-%d')
+            date_from = (datetime.now() - timedelta(days=29)).strftime('%Y-%m-%d')
+        cursor.execute(
+            """
+            SELECT fecha_pago, COALESCE(SUM(monto),0) as total
+            FROM pagos
+            WHERE fecha_pago BETWEEN ? AND ?
+            GROUP BY fecha_pago
+            ORDER BY fecha_pago
+            """,
+            (date_from, date_to)
+        )
+        rows = cursor.fetchall()
+        return [{"fecha": r[0], "total": r[1]} for r in rows]
+
+    def _get_payment_methods_split(self, conn: sqlite3.Connection) -> Dict:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT metodo_pago, COALESCE(SUM(monto),0) as total
+            FROM pagos
+            WHERE strftime('%Y-%m', fecha_pago) = strftime('%Y-%m','now')
+            GROUP BY metodo_pago
+            """
+        )
+        rows = cursor.fetchall()
+        totals = {r[0] or 'desconocido': float(r[1] or 0.0) for r in rows}
+        return totals
     
     def _get_empty_dashboard(self) -> Dict:
         """Retorna estructura vacía del dashboard en caso de error"""
@@ -276,11 +350,15 @@ class DashboardManager:
                 "socios_inactivos": 0,
                 "tasa_actividad": 0,
                 "ingresos_mes": 0,
+                "nuevos_mes": 0,
+                "renovaciones_mes": 0,
                 "visitas_hoy": 0,
                 "promedio_visitas_diarias": 0
             },
             "alerts": [],
             "quick_actions": [],
             "recent_activity": [],
-            "trends": {"visitas_diarias": []}
+            "trends": {"visitas_diarias": []},
+            "income_series": [],
+            "payment_methods": {}
         }

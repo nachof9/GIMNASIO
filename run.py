@@ -15,13 +15,13 @@ from app.main import main
 
 if __name__ == "__main__":
     try:
-        print("🚀 Iniciando Soma Entrenamientos...")
+        print("Iniciando Soma Entrenamientos...")
         main()
     except ImportError as e:
-        print(f"❌ Error de importación: {e}")
-        print("💡 Asegúrate de tener todas las dependencias instaladas:")
+        print(f"Error de importacion: {e}")
+        print("Asegurate de tener todas las dependencias instaladas:")
         print("   pip install -r requirements.txt")
         sys.exit(1)
     except Exception as e:
-        print(f"❌ Error fatal: {e}")
+        print(f"Error fatal: {e}")
         sys.exit(1)

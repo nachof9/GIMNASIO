@@ -39,7 +39,8 @@ FONTS = {
 # Configuración
 DIAS_CUOTA = 30
 DIAS_ALERTA = 7
-POPUP_AUTOCLOSE_SECONDS = 4
+# Duración por defecto de los popups (segundos)
+POPUP_AUTOCLOSE_SECONDS = 2 
 
 BACKUP_CONFIG = {
     "auto_backup_hours": 24,  # Backup automático cada 6 horas
@@ -61,6 +62,11 @@ SOUNDS = {
     'EXPIRED': [(400, 250), (400, 250)],  # doble beep
     'NOT_REGISTERED': (600, 300)
 }
+
+# Autenticación y roles
+# PIN del dueño para acceder a funcionalidades restringidas (p. ej., Dashboard).
+# Puede sobreescribirse con variable de entorno SOMA_OWNER_PIN.
+OWNER_PIN = os.getenv('SOMA_OWNER_PIN', '2582')
 
 def resource_path(relative_path):
     """Obtiene la ruta absoluta del recurso, compatible con PyInstaller"""
