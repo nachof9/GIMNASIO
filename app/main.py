@@ -40,14 +40,16 @@ from PIL import Image
 try:
     from .config import get_log_filename, ensure_directories, resource_path, COLORS, POPUP_AUTOCLOSE_SECONDS, SOUNDS, ALERT_CONFIG, FONTS, OWNER_PIN
     from .db import DatabaseManager
-    from .admin_windows import AltaSocioWindow, EditarSocioWindow, RegistrarPagoWindow, EditarPagoWindow
+    from .admin_windows import (AltaSocioWindow, EditarSocioWindow, RegistrarPagoWindow,
+                                EditarPagoWindow, GrupoFamiliarWindow, RegistrarPagoGrupalWindow)
     from .import_export import ImportExportManager
     from .dashboard_manager import DashboardManager
 except ImportError:
     # Fallback para ejecución directa
     from config import get_log_filename, ensure_directories, resource_path, COLORS, POPUP_AUTOCLOSE_SECONDS, SOUNDS, ALERT_CONFIG, FONTS, OWNER_PIN
     from db import DatabaseManager
-    from admin_windows import AltaSocioWindow, EditarSocioWindow, RegistrarPagoWindow, EditarPagoWindow
+    from admin_windows import (AltaSocioWindow, EditarSocioWindow, RegistrarPagoWindow,
+                               EditarPagoWindow, GrupoFamiliarWindow, RegistrarPagoGrupalWindow)
     from import_export import ImportExportManager
     from dashboard_manager import DashboardManager
 
@@ -303,10 +305,17 @@ class SociosFrame(ctk.CTkFrame):
         title_label.pack(side="left", padx=10, pady=10)
         
         # Botón Nuevo Socio
-        nuevo_btn = ctk.CTkButton(control_frame, text="Nuevo Socio", 
+        nuevo_btn = ctk.CTkButton(control_frame, text="Nuevo Socio",
                                 command=self.nuevo_socio,
                                 font=ctk.CTkFont(**FONTS['BUTTON']))
         nuevo_btn.pack(side="right", padx=10, pady=10)
+
+        # Botón Grupos Familiares
+        grupos_btn = ctk.CTkButton(control_frame, text="👨‍👩‍👧 Grupos Familiares",
+                                   command=self.abrir_gestion_grupos,
+                                   font=ctk.CTkFont(**FONTS['BUTTON']),
+                                   fg_color=COLORS['INFO_BLUE'])
+        grupos_btn.pack(side="right", padx=(0, 5), pady=10)
         
         # Frame de filtros
         filter_frame = ctk.CTkFrame(self)
@@ -341,9 +350,9 @@ class SociosFrame(ctk.CTkFrame):
         table_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
         # Treeview con scrollbar
-        columns = ("DNI", "Nombre", "Email", "Último Pago", "Estado", "Vencimiento", "Acciones")
+        columns = ("DNI", "Nombre", "Email", "Último Pago", "Estado", "Vencimiento", "Grupo", "Acciones")
         self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
-        
+
         # Configurar columnas
         self.tree.heading("DNI", text="DNI")
         self.tree.heading("Nombre", text="Nombre")
@@ -351,16 +360,18 @@ class SociosFrame(ctk.CTkFrame):
         self.tree.heading("Último Pago", text="Último Pago")
         self.tree.heading("Estado", text="Estado")
         self.tree.heading("Vencimiento", text="Vencimiento")
+        self.tree.heading("Grupo", text="Grupo")
         self.tree.heading("Acciones", text="Acciones")
-        
+
         # Ancho de columnas
-        self.tree.column("DNI", width=100)
-        self.tree.column("Nombre", width=200)
-        self.tree.column("Email", width=200)
-        self.tree.column("Último Pago", width=120)
-        self.tree.column("Estado", width=100)
-        self.tree.column("Vencimiento", width=120)
-        self.tree.column("Acciones", width=200)
+        self.tree.column("DNI", width=90)
+        self.tree.column("Nombre", width=170)
+        self.tree.column("Email", width=170)
+        self.tree.column("Último Pago", width=105)
+        self.tree.column("Estado", width=90)
+        self.tree.column("Vencimiento", width=105)
+        self.tree.column("Grupo", width=120)
+        self.tree.column("Acciones", width=120)
         
         # Scrollbar
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
@@ -392,12 +403,13 @@ class SociosFrame(ctk.CTkFrame):
                 ultimo_pago = socio['ultimo_pago'] or "Sin pagos"
                 estado = socio['estado']
                 vencimiento = socio['fecha_vencimiento'] or ""
-                
+                grupo = socio.get('grupo_nombre') or "—"
+
                 # Insertar en tabla
                 item = self.tree.insert("", "end", values=(
-                    dni, nombre, email, ultimo_pago, estado, vencimiento, "Ver acciones"
+                    dni, nombre, email, ultimo_pago, estado, vencimiento, grupo, "Ver acciones"
                 ))
-                
+
                 # Colorear según estado
                 if estado == "Activo":
                     self.tree.set(item, "Estado", "✅ Activo")
@@ -440,11 +452,12 @@ class SociosFrame(ctk.CTkFrame):
                 ultimo_pago = socio['ultimo_pago'] or "Sin pagos"
                 estado = socio['estado']
                 vencimiento = socio['fecha_vencimiento'] or ""
-                
+                grupo = socio.get('grupo_nombre') or "—"
+
                 item = self.tree.insert("", "end", values=(
-                    dni, nombre, email, ultimo_pago, estado, vencimiento, "Ver acciones"
+                    dni, nombre, email, ultimo_pago, estado, vencimiento, grupo, "Ver acciones"
                 ))
-                
+
                 # Colorear según estado
                 if estado == "Activo":
                     self.tree.set(item, "Estado", "✅ Activo")
@@ -579,12 +592,12 @@ class SociosFrame(ctk.CTkFrame):
     
     def eliminar_socio(self, dni, nombre):
         # Doble confirmación
-        if not messagebox.askyesno("Confirmar eliminación", 
+        if not messagebox.askyesno("Confirmar eliminación",
                                   f"¿Está seguro de eliminar al socio {nombre} (DNI: {dni})?\n\n"
                                   "Esta acción eliminará también todos sus pagos y NO se puede deshacer."):
             return
-        
-        if not messagebox.askyesno("Confirmación final", 
+
+        if not messagebox.askyesno("Confirmación final",
                                   f"ÚLTIMA CONFIRMACIÓN:\n\n"
                                   f"Se eliminará permanentemente:\n"
                                   f"• Socio: {nombre}\n"
@@ -592,7 +605,7 @@ class SociosFrame(ctk.CTkFrame):
                                   f"• Todos sus pagos\n\n"
                                   f"¿Continuar?"):
             return
-        
+
         try:
             self.db_manager.eliminar_socio_y_pagos(dni)
             messagebox.showinfo("Éxito", f"Socio {nombre} eliminado correctamente")
@@ -600,6 +613,160 @@ class SociosFrame(ctk.CTkFrame):
         except Exception as e:
             logging.error(f"Error eliminando socio: {e}")
             messagebox.showerror("Error", f"Error al eliminar socio: {str(e)}")
+
+    def abrir_gestion_grupos(self):
+        """Abre la ventana de gestión de grupos familiares."""
+        GruposFamiliaresManagerWindow(self, self.db_manager, callback=self.cargar_socios)
+
+
+class GruposFamiliaresManagerWindow:
+    """Ventana modal para listar, crear, editar, pagar y eliminar grupos familiares."""
+
+    def __init__(self, parent, db_manager, callback=None):
+        self.db_manager = db_manager
+        self.callback = callback
+
+        self.window = ctk.CTkToplevel(parent)
+        self.window.title("Grupos Familiares")
+        self.window.geometry("680x500")
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.window.update_idletasks()
+        x = (self.window.winfo_screenwidth() // 2) - 340
+        y = (self.window.winfo_screenheight() // 2) - 250
+        self.window.geometry(f"680x500+{x}+{y}")
+
+        self._create_widgets()
+        self._cargar_grupos()
+
+    def _create_widgets(self):
+        # Encabezado
+        header = ctk.CTkFrame(self.window, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=(15, 5))
+        ctk.CTkLabel(header, text="Grupos Familiares",
+                     font=ctk.CTkFont(size=22, weight="bold"),
+                     text_color=COLORS['SOMA_ORANGE']).pack(side="left")
+        ctk.CTkButton(header, text="+ Nuevo Grupo",
+                      command=self._nuevo_grupo,
+                      fg_color=COLORS['SUCCESS_GREEN'],
+                      font=ctk.CTkFont(size=14, weight="bold")).pack(side="right")
+
+        # Tabla de grupos
+        table_frame = ctk.CTkFrame(self.window)
+        table_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        cols = ("ID", "Nombre del grupo", "Miembros", "Precio especial")
+        self.grupos_tree = ttk.Treeview(table_frame, columns=cols, show="headings", height=12)
+        self.grupos_tree.heading("ID", text="ID")
+        self.grupos_tree.heading("Nombre del grupo", text="Nombre del grupo")
+        self.grupos_tree.heading("Miembros", text="Miembros")
+        self.grupos_tree.heading("Precio especial", text="Precio especial")
+        self.grupos_tree.column("ID", width=45)
+        self.grupos_tree.column("Nombre del grupo", width=260)
+        self.grupos_tree.column("Miembros", width=90)
+        self.grupos_tree.column("Precio especial", width=130)
+
+        sb = ttk.Scrollbar(table_frame, orient="vertical", command=self.grupos_tree.yview)
+        self.grupos_tree.configure(yscrollcommand=sb.set)
+        self.grupos_tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        self.grupos_tree.bind("<Double-1>", lambda e: self._editar_grupo_seleccionado())
+        self.grupos_tree.bind("<Button-3>", self._menu_contextual)
+
+        # Botones de acción
+        btn_frame = ctk.CTkFrame(self.window, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=20, pady=(0, 15))
+        ctk.CTkButton(btn_frame, text="Editar grupo",
+                      command=self._editar_grupo_seleccionado,
+                      width=130).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_frame, text="💳 Registrar Pago",
+                      command=self._pago_grupal_seleccionado,
+                      fg_color=COLORS['SUCCESS_GREEN'],
+                      width=160).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_frame, text="Eliminar",
+                      command=self._eliminar_grupo_seleccionado,
+                      fg_color=COLORS['ERROR_RED'],
+                      width=100).pack(side="left")
+        ctk.CTkButton(btn_frame, text="Cerrar",
+                      command=self.window.destroy,
+                      width=100).pack(side="right")
+
+    def _cargar_grupos(self):
+        for item in self.grupos_tree.get_children():
+            self.grupos_tree.delete(item)
+        for g in self.db_manager.listar_grupos():
+            precio = f"${g['precio_especial']:.2f}" if g['precio_especial'] else "—"
+            self.grupos_tree.insert("", "end", values=(
+                g['id'], g['nombre'], g['cantidad_miembros'], precio
+            ))
+
+    def _get_grupo_seleccionado(self):
+        sel = self.grupos_tree.selection()
+        if not sel:
+            messagebox.showwarning("Atención", "Seleccione un grupo de la lista")
+            return None
+        return self.grupos_tree.item(sel[0])['values']
+
+    def _nuevo_grupo(self):
+        GrupoFamiliarWindow(self.window, self.db_manager, callback=self._on_cambio)
+
+    def _editar_grupo_seleccionado(self):
+        vals = self._get_grupo_seleccionado()
+        if not vals:
+            return
+        GrupoFamiliarWindow(self.window, self.db_manager, grupo_id=int(vals[0]), callback=self._on_cambio)
+
+    def _pago_grupal_seleccionado(self):
+        vals = self._get_grupo_seleccionado()
+        if not vals:
+            return
+        RegistrarPagoGrupalWindow(self.window, self.db_manager, grupo_id=int(vals[0]),
+                                   callback=self._on_cambio)
+
+    def _eliminar_grupo_seleccionado(self):
+        vals = self._get_grupo_seleccionado()
+        if not vals:
+            return
+        grupo_id, nombre = int(vals[0]), vals[1]
+        if not messagebox.askyesno("Confirmar",
+                                   f"¿Eliminar el grupo '{nombre}'?\n\n"
+                                   "Los socios del grupo NO se eliminarán, solo se desvinculan."):
+            return
+        try:
+            self.db_manager.eliminar_grupo(grupo_id)
+            self._on_cambio()
+            messagebox.showinfo("Éxito", f"Grupo '{nombre}' eliminado")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo eliminar: {str(e)}")
+
+    def _menu_contextual(self, event):
+        sel = self.grupos_tree.identify_row(event.y)
+        if not sel:
+            return
+        self.grupos_tree.selection_set(sel)
+        vals = self.grupos_tree.item(sel)['values']
+        grupo_id, nombre = int(vals[0]), vals[1]
+        menu = tk.Menu(self.window, tearoff=0)
+        menu.add_command(label="Editar grupo",
+                         command=lambda: GrupoFamiliarWindow(
+                             self.window, self.db_manager, grupo_id=grupo_id, callback=self._on_cambio))
+        menu.add_command(label="💳 Registrar Pago",
+                         command=lambda: RegistrarPagoGrupalWindow(
+                             self.window, self.db_manager, grupo_id=grupo_id, callback=self._on_cambio))
+        menu.add_separator()
+        menu.add_command(label="Eliminar grupo",
+                         command=self._eliminar_grupo_seleccionado)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _on_cambio(self):
+        self._cargar_grupos()
+        if self.callback:
+            self.callback()
+
 
 class IngresosFrame(ctk.CTkFrame):
     def __init__(self, parent, db_manager):

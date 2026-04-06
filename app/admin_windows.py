@@ -688,3 +688,287 @@ class EditarPagoWindow:
             self.window.destroy()
         except Exception as e:
             messagebox.showerror("Error", f"Error al actualizar pago: {str(e)}")
+
+
+class GrupoFamiliarWindow:
+    """Ventana para crear o editar un grupo familiar y gestionar sus miembros."""
+
+    def __init__(self, parent, db_manager, grupo_id: Optional[int] = None,
+                 callback: Optional[Callable] = None):
+        self.db_manager = db_manager
+        self.grupo_id = grupo_id  # None = crear, int = editar
+        self.callback = callback
+        # Lista de DNIs pendientes de asignar (se aplica al guardar)
+        self._miembros: list = []
+
+        self.window = tk.Toplevel(parent)
+        self.window.title("Grupo Familiar" if not grupo_id else "Editar Grupo Familiar")
+        self.window.geometry("520x620")
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.window.update_idletasks()
+        x = (self.window.winfo_screenwidth() // 2) - 260
+        y = (self.window.winfo_screenheight() // 2) - 310
+        self.window.geometry(f"520x620+{x}+{y}")
+
+        self._create_widgets()
+        if grupo_id:
+            self._precargar_datos()
+
+    def _create_widgets(self):
+        main = ttk.Frame(self.window)
+        main.pack(fill="both", expand=True, padx=20, pady=20)
+
+        title_txt = "Nuevo Grupo Familiar" if not self.grupo_id else "Editar Grupo Familiar"
+        ttk.Label(main, text=title_txt, font=('TkDefaultFont', 22, 'bold')).pack(pady=(0, 20))
+
+        # Nombre
+        ttk.Label(main, text="Nombre del grupo *", font=('TkDefaultFont', 16)).pack(anchor='w')
+        self.nombre_entry = ttk.Entry(main, font=('TkDefaultFont', 16))
+        self.nombre_entry.pack(fill='x', pady=(0, 15))
+
+        # Precio especial
+        ttk.Label(main, text="Precio especial del grupo (opcional)", font=('TkDefaultFont', 16)).pack(anchor='w')
+        self.precio_entry = ttk.Entry(main, font=('TkDefaultFont', 16))
+        self.precio_entry.pack(fill='x', pady=(0, 20))
+
+        # Miembros actuales
+        ttk.Label(main, text="Miembros del grupo", font=('TkDefaultFont', 16, 'bold')).pack(anchor='w')
+        members_frame = ttk.Frame(main)
+        members_frame.pack(fill='x', pady=(5, 10))
+        self.miembros_listbox = tk.Listbox(members_frame, height=5, font=('TkDefaultFont', 13))
+        self.miembros_listbox.pack(fill='x')
+
+        # Botón quitar miembro seleccionado
+        ttk.Button(main, text="Quitar seleccionado", command=self._quitar_miembro).pack(anchor='e', pady=(0, 15))
+
+        # Buscador para agregar
+        ttk.Label(main, text="Buscar y agregar socio", font=('TkDefaultFont', 14)).pack(anchor='w')
+        self.add_search_entry = ttk.Entry(main, font=('TkDefaultFont', 14))
+        self.add_search_entry.pack(fill='x')
+        self.add_search_entry.bind('<KeyRelease>', self._actualizar_sugerencias_agregar)
+        self.add_suggestions = tk.Listbox(main, height=4, font=('TkDefaultFont', 13))
+        self.add_suggestions.pack(fill='x', pady=(5, 5))
+        self.add_suggestions.bind('<<ListboxSelect>>', self._agregar_sugerido)
+        ttk.Button(main, text="Agregar", command=self._agregar_desde_busqueda).pack(anchor='w', pady=(0, 20))
+
+        # Botones finales
+        btn_frame = ttk.Frame(main)
+        btn_frame.pack(fill='x')
+        ttk.Button(btn_frame, text="Cancelar", command=self.window.destroy).pack(side='right', padx=(10, 0))
+        ttk.Button(btn_frame, text="Guardar", command=self._guardar).pack(side='right')
+
+    def _precargar_datos(self):
+        grupo = self.db_manager.obtener_grupo(self.grupo_id)
+        if not grupo:
+            return
+        self.nombre_entry.insert(0, grupo['nombre'])
+        if grupo['precio_especial'] is not None:
+            self.precio_entry.insert(0, str(grupo['precio_especial']))
+        # Cargar miembros actuales
+        for s in self.db_manager.obtener_miembros_grupo(self.grupo_id):
+            self._miembros.append({'dni': s['dni'], 'nombre': s['nombre']})
+            self.miembros_listbox.insert(tk.END, f"{s['nombre']}  (DNI {s['dni']})")
+
+    def _actualizar_sugerencias_agregar(self, event=None):
+        texto = self.add_search_entry.get().strip()
+        self.add_suggestions.delete(0, tk.END)
+        if not texto:
+            return
+        try:
+            resultados = self.db_manager.buscar_socios(texto)
+            miembros_dni = {m['dni'] for m in self._miembros}
+            for s in resultados:
+                if s['dni'] not in miembros_dni:
+                    self.add_suggestions.insert(tk.END, f"{s['nombre']}  (DNI {s['dni']})")
+        except Exception:
+            pass
+
+    def _agregar_sugerido(self, event=None):
+        sel = self.add_suggestions.curselection()
+        if not sel:
+            return
+        texto = self.add_suggestions.get(sel[0])
+        m = re.search(r'DNI\s(\d+)', texto)
+        if m:
+            dni = int(m.group(1))
+            nombre = texto.split('  (DNI')[0].strip()
+            if not any(mem['dni'] == dni for mem in self._miembros):
+                self._miembros.append({'dni': dni, 'nombre': nombre})
+                self.miembros_listbox.insert(tk.END, f"{nombre}  (DNI {dni})")
+            self.add_search_entry.delete(0, tk.END)
+            self.add_suggestions.delete(0, tk.END)
+
+    def _agregar_desde_busqueda(self):
+        # Seleccionar el primero de las sugerencias si hay alguno
+        if self.add_suggestions.size() > 0:
+            self.add_suggestions.selection_clear(0, tk.END)
+            self.add_suggestions.selection_set(0)
+            self._agregar_sugerido()
+
+    def _quitar_miembro(self):
+        sel = self.miembros_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        self._miembros.pop(idx)
+        self.miembros_listbox.delete(idx)
+
+    def _guardar(self):
+        nombre = self.nombre_entry.get().strip()
+        if not nombre:
+            messagebox.showerror("Error", "El nombre del grupo es obligatorio")
+            return
+
+        precio_txt = self.precio_entry.get().strip()
+        precio_especial = None
+        if precio_txt:
+            try:
+                precio_especial = float(precio_txt)
+                if precio_especial <= 0:
+                    raise ValueError()
+            except ValueError:
+                messagebox.showerror("Error", "El precio especial debe ser un número mayor a 0")
+                return
+
+        try:
+            if self.grupo_id is None:
+                # Crear nuevo grupo
+                grupo_id = self.db_manager.crear_grupo(nombre, precio_especial)
+            else:
+                grupo_id = self.grupo_id
+                self.db_manager.editar_grupo(grupo_id, nombre, precio_especial)
+                # Limpiar asignaciones previas del grupo
+                for s in self.db_manager.obtener_miembros_grupo(grupo_id):
+                    self.db_manager.remover_socio_de_grupo(s['dni'])
+
+            # Asignar miembros actuales
+            for mem in self._miembros:
+                self.db_manager.asignar_socio_a_grupo(mem['dni'], grupo_id)
+
+            accion = "creado" if self.grupo_id is None else "actualizado"
+            messagebox.showinfo("Éxito", f"Grupo '{nombre}' {accion} con {len(self._miembros)} miembro(s)")
+            if self.callback:
+                self.callback()
+            self.window.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo guardar el grupo: {str(e)}")
+
+
+class RegistrarPagoGrupalWindow:
+    """Ventana para registrar un pago para todos los miembros de un grupo familiar."""
+
+    def __init__(self, parent, db_manager, grupo_id: int, callback: Optional[Callable] = None):
+        self.db_manager = db_manager
+        self.grupo_id = grupo_id
+        self.callback = callback
+
+        self.grupo = db_manager.obtener_grupo(grupo_id)
+        if not self.grupo:
+            messagebox.showerror("Error", "Grupo no encontrado")
+            return
+        self.miembros = db_manager.obtener_miembros_grupo(grupo_id)
+        if not self.miembros:
+            messagebox.showerror("Error", "El grupo no tiene miembros. Agregue socios al grupo primero.")
+            return
+
+        self.window = tk.Toplevel(parent)
+        self.window.title(f"Pago Grupal — {self.grupo['nombre']}")
+        self.window.geometry("500x520")
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.window.update_idletasks()
+        x = (self.window.winfo_screenwidth() // 2) - 250
+        y = (self.window.winfo_screenheight() // 2) - 260
+        self.window.geometry(f"500x520+{x}+{y}")
+
+        self._create_widgets()
+
+    def _create_widgets(self):
+        main = ttk.Frame(self.window)
+        main.pack(fill="both", expand=True, padx=20, pady=20)
+
+        ttk.Label(main, text="Pago Grupal", font=('TkDefaultFont', 22, 'bold')).pack(pady=(0, 5))
+
+        # Info del grupo
+        nombres = ", ".join(m['nombre'].split()[0] for m in self.miembros)
+        info_txt = f"Grupo: {self.grupo['nombre']}   |   Miembros: {len(self.miembros)}"
+        ttk.Label(main, text=info_txt, font=('TkDefaultFont', 13)).pack(pady=(0, 5))
+        ttk.Label(main, text=f"({nombres})", font=('TkDefaultFont', 11),
+                  foreground='gray').pack(pady=(0, 20))
+
+        # Monto
+        ttk.Label(main, text="Monto *", font=('TkDefaultFont', 16)).pack(anchor='w')
+        self.monto_entry = ttk.Entry(main, font=('TkDefaultFont', 16))
+        if self.grupo.get('precio_especial'):
+            self.monto_entry.insert(0, str(self.grupo['precio_especial']))
+        self.monto_entry.pack(fill='x', pady=(0, 15))
+
+        # Duración
+        ttk.Label(main, text="Duración *", font=('TkDefaultFont', 16)).pack(anchor='w')
+        self.meses_var = tk.IntVar(self.window, value=1)
+        meses_frame = ttk.Frame(main)
+        meses_frame.pack(fill='x', pady=(0, 15))
+        for meses, label in [(1, "1 mes"), (3, "3 meses"), (6, "6 meses"), (12, "12 meses")]:
+            ttk.Radiobutton(meses_frame, text=label, variable=self.meses_var,
+                            value=meses, font=('TkDefaultFont', 15)).pack(side='left', padx=(0, 12))
+
+        # Fecha
+        ttk.Label(main, text="Fecha de Pago *", font=('TkDefaultFont', 16)).pack(anchor='w')
+        self.fecha_entry = ttk.Entry(main, font=('TkDefaultFont', 16))
+        self.fecha_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
+        self.fecha_entry.pack(fill='x', pady=(0, 15))
+
+        # Método
+        ttk.Label(main, text="Método de Pago *", font=('TkDefaultFont', 16)).pack(anchor='w')
+        self.metodo_var = tk.StringVar(self.window, value='efectivo')
+        metodo_frame = ttk.Frame(main)
+        metodo_frame.pack(fill='x', pady=(0, 20))
+        ttk.Radiobutton(metodo_frame, text="Efectivo", variable=self.metodo_var,
+                        value="efectivo", font=('TkDefaultFont', 15)).pack(side='left', padx=(0, 20))
+        ttk.Radiobutton(metodo_frame, text="Transferencia", variable=self.metodo_var,
+                        value="transferencia", font=('TkDefaultFont', 15)).pack(side='left')
+
+        # Aviso informativo
+        aviso = f"ℹ  Se crearán {len(self.miembros)} pago{'s' if len(self.miembros) > 1 else ''} individual{'es' if len(self.miembros) > 1 else ''}"
+        ttk.Label(main, text=aviso, font=('TkDefaultFont', 13), foreground='#2196F3').pack(pady=(0, 20))
+
+        # Botones
+        btn_frame = ttk.Frame(main)
+        btn_frame.pack(fill='x')
+        ttk.Button(btn_frame, text="Cancelar", command=self.window.destroy).pack(side='right', padx=(10, 0))
+        ttk.Button(btn_frame, text="Registrar", command=self._registrar).pack(side='right')
+        self.window.bind('<Return>', lambda e: self._registrar())
+
+    def _registrar(self):
+        try:
+            monto = float(self.monto_entry.get().strip())
+            if monto <= 0:
+                raise ValueError()
+        except ValueError:
+            messagebox.showerror("Error", "El monto debe ser un número mayor a 0")
+            return
+        fecha = self.fecha_entry.get().strip()
+        try:
+            datetime.strptime(fecha, '%Y-%m-%d')
+        except ValueError:
+            messagebox.showerror("Error", "La fecha debe tener formato YYYY-MM-DD")
+            return
+        metodo = self.metodo_var.get()
+        if metodo not in ("efectivo", "transferencia"):
+            messagebox.showerror("Error", "Seleccione un método de pago")
+            return
+        meses = self.meses_var.get()
+        try:
+            cantidad = self.db_manager.registrar_pago_grupal(self.grupo_id, monto, fecha, metodo, meses)
+            duracion_txt = f"{meses} mes" if meses == 1 else f"{meses} meses"
+            messagebox.showinfo(
+                "Éxito",
+                f"Pago grupal registrado para '{self.grupo['nombre']}'\n"
+                f"{cantidad} pago(s) de ${monto} — {duracion_txt} — {metodo}"
+            )
+            if self.callback:
+                self.callback()
+            self.window.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo registrar el pago grupal: {str(e)}")
