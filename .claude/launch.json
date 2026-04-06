@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Soma Entrenamientos (app)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["run.py"],
+      "port": 5678
+    },
+    {
+      "name": "Soma Entrenamientos (module)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "app.main"],
+      "port": 5678
+    }
+  ]
+}
