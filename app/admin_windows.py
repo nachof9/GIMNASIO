@@ -4,6 +4,18 @@ from tkinter import messagebox
 from datetime import datetime
 from typing import Optional, Callable
 import re
+try:
+    import customtkinter as ctk
+except ImportError:
+    ctk = None  # fallback: ventanas de grupo usarán ttk si no está disponible
+
+# Colores de marca (se usan en ventanas CTk)
+_ORANGE      = "#E6461A"
+_ORANGE_DARK = "#C93D16"
+_GRAY_BTN    = "#E5E7EB"
+_GRAY_HOVER  = "#D1D5DB"
+_TEXT_DARK   = "#1A1A1A"
+_BORDER      = "#E5E7EB"
 
 class AltaSocioWindow:
     def __init__(self, parent, db_manager, callback: Optional[Callable] = None):
@@ -696,67 +708,95 @@ class GrupoFamiliarWindow:
     def __init__(self, parent, db_manager, grupo_id: Optional[int] = None,
                  callback: Optional[Callable] = None):
         self.db_manager = db_manager
-        self.grupo_id = grupo_id  # None = crear, int = editar
+        self.grupo_id = grupo_id
         self.callback = callback
-        # Lista de DNIs pendientes de asignar (se aplica al guardar)
         self._miembros: list = []
 
-        self.window = tk.Toplevel(parent)
+        self.window = ctk.CTkToplevel(parent)
         self.window.title("Grupo Familiar" if not grupo_id else "Editar Grupo Familiar")
-        self.window.geometry("520x620")
+        self.window.geometry("520x640")
         self.window.transient(parent)
         self.window.grab_set()
         self.window.update_idletasks()
         x = (self.window.winfo_screenwidth() // 2) - 260
-        y = (self.window.winfo_screenheight() // 2) - 310
-        self.window.geometry(f"520x620+{x}+{y}")
+        y = (self.window.winfo_screenheight() // 2) - 320
+        self.window.geometry(f"520x640+{x}+{y}")
 
         self._create_widgets()
         if grupo_id:
             self._precargar_datos()
 
     def _create_widgets(self):
-        main = ttk.Frame(self.window)
-        main.pack(fill="both", expand=True, padx=20, pady=20)
+        main = ctk.CTkFrame(self.window, fg_color="transparent")
+        main.pack(fill="both", expand=True, padx=24, pady=20)
 
         title_txt = "Nuevo Grupo Familiar" if not self.grupo_id else "Editar Grupo Familiar"
-        ttk.Label(main, text=title_txt, font=('TkDefaultFont', 22, 'bold')).pack(pady=(0, 20))
+        ctk.CTkLabel(main, text=title_txt,
+                     font=ctk.CTkFont(size=22, weight="bold"),
+                     text_color=_TEXT_DARK).pack(pady=(0, 16))
 
         # Nombre
-        ttk.Label(main, text="Nombre del grupo *", font=('TkDefaultFont', 16)).pack(anchor='w')
-        self.nombre_entry = ttk.Entry(main, font=('TkDefaultFont', 16))
-        self.nombre_entry.pack(fill='x', pady=(0, 15))
+        ctk.CTkLabel(main, text="Nombre del grupo *",
+                     font=ctk.CTkFont(size=14), text_color=_TEXT_DARK).pack(anchor='w')
+        self.nombre_entry = ctk.CTkEntry(main, font=ctk.CTkFont(size=14), height=36,
+                                          placeholder_text="Ej: Familia García")
+        self.nombre_entry.pack(fill='x', pady=(4, 12))
 
         # Precio especial
-        ttk.Label(main, text="Precio especial del grupo (opcional)", font=('TkDefaultFont', 16)).pack(anchor='w')
-        self.precio_entry = ttk.Entry(main, font=('TkDefaultFont', 16))
-        self.precio_entry.pack(fill='x', pady=(0, 20))
+        ctk.CTkLabel(main, text="Precio especial del grupo (opcional)",
+                     font=ctk.CTkFont(size=14), text_color=_TEXT_DARK).pack(anchor='w')
+        self.precio_entry = ctk.CTkEntry(main, font=ctk.CTkFont(size=14), height=36,
+                                          placeholder_text="0.00")
+        self.precio_entry.pack(fill='x', pady=(4, 16))
 
         # Miembros actuales
-        ttk.Label(main, text="Miembros del grupo", font=('TkDefaultFont', 16, 'bold')).pack(anchor='w')
-        members_frame = ttk.Frame(main)
-        members_frame.pack(fill='x', pady=(5, 10))
-        self.miembros_listbox = tk.Listbox(members_frame, height=5, font=('TkDefaultFont', 13))
-        self.miembros_listbox.pack(fill='x')
+        ctk.CTkLabel(main, text="Miembros del grupo",
+                     font=ctk.CTkFont(size=14, weight="bold"),
+                     text_color=_TEXT_DARK).pack(anchor='w')
+        members_bg = ctk.CTkFrame(main, fg_color="#FFFFFF", border_width=1,
+                                   border_color=_BORDER, corner_radius=8)
+        members_bg.pack(fill='x', pady=(4, 2))
+        self.miembros_listbox = tk.Listbox(members_bg, height=4, font=('TkDefaultFont', 12),
+                                            bg="#FFFFFF", relief="flat", bd=0,
+                                            selectbackground=_ORANGE, selectforeground="white",
+                                            activestyle="none")
+        self.miembros_listbox.pack(fill='x', padx=8, pady=6)
 
-        # Botón quitar miembro seleccionado
-        ttk.Button(main, text="Quitar seleccionado", command=self._quitar_miembro).pack(anchor='e', pady=(0, 15))
+        ctk.CTkButton(main, text="✕  Quitar seleccionado", command=self._quitar_miembro,
+                      fg_color=_GRAY_BTN, text_color=_TEXT_DARK, hover_color=_GRAY_HOVER,
+                      height=28, font=ctk.CTkFont(size=12)).pack(anchor='e', pady=(2, 12))
 
         # Buscador para agregar
-        ttk.Label(main, text="Buscar y agregar socio", font=('TkDefaultFont', 14)).pack(anchor='w')
-        self.add_search_entry = ttk.Entry(main, font=('TkDefaultFont', 14))
-        self.add_search_entry.pack(fill='x')
+        ctk.CTkLabel(main, text="Buscar y agregar socio",
+                     font=ctk.CTkFont(size=13), text_color=_TEXT_DARK).pack(anchor='w')
+        self.add_search_entry = ctk.CTkEntry(main, font=ctk.CTkFont(size=13), height=34,
+                                              placeholder_text="Nombre o apellido...")
+        self.add_search_entry.pack(fill='x', pady=(4, 2))
         self.add_search_entry.bind('<KeyRelease>', self._actualizar_sugerencias_agregar)
-        self.add_suggestions = tk.Listbox(main, height=4, font=('TkDefaultFont', 13))
-        self.add_suggestions.pack(fill='x', pady=(5, 5))
+
+        sug_bg = ctk.CTkFrame(main, fg_color="#FFFFFF", border_width=1,
+                               border_color=_BORDER, corner_radius=6)
+        sug_bg.pack(fill='x', pady=(0, 4))
+        self.add_suggestions = tk.Listbox(sug_bg, height=3, font=('TkDefaultFont', 12),
+                                           bg="#FFFFFF", relief="flat", bd=0,
+                                           selectbackground=_ORANGE, selectforeground="white",
+                                           activestyle="none")
+        self.add_suggestions.pack(fill='x', padx=8, pady=4)
         self.add_suggestions.bind('<<ListboxSelect>>', self._agregar_sugerido)
-        ttk.Button(main, text="Agregar", command=self._agregar_desde_busqueda).pack(anchor='w', pady=(0, 20))
+
+        ctk.CTkButton(main, text="➕  Agregar", command=self._agregar_desde_busqueda,
+                      fg_color=_ORANGE, hover_color=_ORANGE_DARK,
+                      height=30, font=ctk.CTkFont(size=12)).pack(anchor='w', pady=(2, 16))
 
         # Botones finales
-        btn_frame = ttk.Frame(main)
+        btn_frame = ctk.CTkFrame(main, fg_color="transparent")
         btn_frame.pack(fill='x')
-        ttk.Button(btn_frame, text="Cancelar", command=self.window.destroy).pack(side='right', padx=(10, 0))
-        ttk.Button(btn_frame, text="Guardar", command=self._guardar).pack(side='right')
+        ctk.CTkButton(btn_frame, text="Cancelar", command=self.window.destroy,
+                      fg_color=_GRAY_BTN, text_color=_TEXT_DARK, hover_color=_GRAY_HOVER,
+                      height=36).pack(side='right', padx=(8, 0))
+        ctk.CTkButton(btn_frame, text="Guardar", command=self._guardar,
+                      fg_color=_ORANGE, hover_color=_ORANGE_DARK,
+                      height=36).pack(side='right')
 
     def _precargar_datos(self):
         grupo = self.db_manager.obtener_grupo(self.grupo_id)
@@ -872,7 +912,7 @@ class RegistrarPagoGrupalWindow:
             messagebox.showerror("Error", "El grupo no tiene miembros. Agregue socios al grupo primero.")
             return
 
-        self.window = tk.Toplevel(parent)
+        self.window = ctk.CTkToplevel(parent)
         self.window.title(f"Pago Grupal — {self.grupo['nombre']}")
         self.window.geometry("500x520")
         self.window.transient(parent)
@@ -885,59 +925,76 @@ class RegistrarPagoGrupalWindow:
         self._create_widgets()
 
     def _create_widgets(self):
-        main = ttk.Frame(self.window)
-        main.pack(fill="both", expand=True, padx=20, pady=20)
+        main = ctk.CTkFrame(self.window, fg_color="transparent")
+        main.pack(fill="both", expand=True, padx=24, pady=20)
 
-        ttk.Label(main, text="Pago Grupal", font=('TkDefaultFont', 22, 'bold')).pack(pady=(0, 5))
+        ctk.CTkLabel(main, text="Pago Grupal",
+                     font=ctk.CTkFont(size=22, weight="bold"),
+                     text_color=_TEXT_DARK).pack(pady=(0, 4))
 
         # Info del grupo
         nombres = ", ".join(m['nombre'].split()[0] for m in self.miembros)
-        info_txt = f"Grupo: {self.grupo['nombre']}   |   Miembros: {len(self.miembros)}"
-        ttk.Label(main, text=info_txt, font=('TkDefaultFont', 13)).pack(pady=(0, 5))
-        ttk.Label(main, text=f"({nombres})", font=('TkDefaultFont', 11),
-                  foreground='gray').pack(pady=(0, 20))
+        info_txt = f"Grupo: {self.grupo['nombre']}   |   {len(self.miembros)} miembro(s)"
+        ctk.CTkLabel(main, text=info_txt,
+                     font=ctk.CTkFont(size=13), text_color=_TEXT_DARK).pack(pady=(0, 2))
+        ctk.CTkLabel(main, text=f"({nombres})",
+                     font=ctk.CTkFont(size=11),
+                     text_color="#6B7280").pack(pady=(0, 16))
 
         # Monto
-        ttk.Label(main, text="Monto *", font=('TkDefaultFont', 16)).pack(anchor='w')
-        self.monto_entry = ttk.Entry(main, font=('TkDefaultFont', 16))
+        ctk.CTkLabel(main, text="Monto *",
+                     font=ctk.CTkFont(size=14), text_color=_TEXT_DARK).pack(anchor='w')
+        self.monto_entry = ctk.CTkEntry(main, font=ctk.CTkFont(size=14), height=36,
+                                         placeholder_text="0.00")
         if self.grupo.get('precio_especial'):
             self.monto_entry.insert(0, str(self.grupo['precio_especial']))
-        self.monto_entry.pack(fill='x', pady=(0, 15))
+        self.monto_entry.pack(fill='x', pady=(4, 12))
 
         # Duración
-        ttk.Label(main, text="Duración *", font=('TkDefaultFont', 16)).pack(anchor='w')
+        ctk.CTkLabel(main, text="Duración *",
+                     font=ctk.CTkFont(size=14), text_color=_TEXT_DARK).pack(anchor='w')
         self.meses_var = tk.IntVar(self.window, value=1)
-        meses_frame = ttk.Frame(main)
-        meses_frame.pack(fill='x', pady=(0, 15))
+        meses_frame = ctk.CTkFrame(main, fg_color="transparent")
+        meses_frame.pack(fill='x', pady=(4, 12))
         for meses, label in [(1, "1 mes"), (3, "3 meses"), (6, "6 meses"), (12, "12 meses")]:
-            ttk.Radiobutton(meses_frame, text=label, variable=self.meses_var,
-                            value=meses, font=('TkDefaultFont', 15)).pack(side='left', padx=(0, 12))
+            ctk.CTkRadioButton(meses_frame, text=label, variable=self.meses_var,
+                               value=meses, font=ctk.CTkFont(size=13),
+                               fg_color=_ORANGE, hover_color=_ORANGE_DARK).pack(side='left', padx=(0, 12))
 
         # Fecha
-        ttk.Label(main, text="Fecha de Pago *", font=('TkDefaultFont', 16)).pack(anchor='w')
-        self.fecha_entry = ttk.Entry(main, font=('TkDefaultFont', 16))
+        ctk.CTkLabel(main, text="Fecha de Pago *",
+                     font=ctk.CTkFont(size=14), text_color=_TEXT_DARK).pack(anchor='w')
+        self.fecha_entry = ctk.CTkEntry(main, font=ctk.CTkFont(size=14), height=36)
         self.fecha_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
-        self.fecha_entry.pack(fill='x', pady=(0, 15))
+        self.fecha_entry.pack(fill='x', pady=(4, 12))
 
         # Método
-        ttk.Label(main, text="Método de Pago *", font=('TkDefaultFont', 16)).pack(anchor='w')
+        ctk.CTkLabel(main, text="Método de Pago *",
+                     font=ctk.CTkFont(size=14), text_color=_TEXT_DARK).pack(anchor='w')
         self.metodo_var = tk.StringVar(self.window, value='efectivo')
-        metodo_frame = ttk.Frame(main)
-        metodo_frame.pack(fill='x', pady=(0, 20))
-        ttk.Radiobutton(metodo_frame, text="Efectivo", variable=self.metodo_var,
-                        value="efectivo", font=('TkDefaultFont', 15)).pack(side='left', padx=(0, 20))
-        ttk.Radiobutton(metodo_frame, text="Transferencia", variable=self.metodo_var,
-                        value="transferencia", font=('TkDefaultFont', 15)).pack(side='left')
+        metodo_frame = ctk.CTkFrame(main, fg_color="transparent")
+        metodo_frame.pack(fill='x', pady=(4, 16))
+        for val, lbl in [("efectivo", "Efectivo"), ("transferencia", "Transferencia")]:
+            ctk.CTkRadioButton(metodo_frame, text=lbl, variable=self.metodo_var,
+                               value=val, font=ctk.CTkFont(size=13),
+                               fg_color=_ORANGE, hover_color=_ORANGE_DARK).pack(side='left', padx=(0, 20))
 
         # Aviso informativo
-        aviso = f"ℹ  Se crearán {len(self.miembros)} pago{'s' if len(self.miembros) > 1 else ''} individual{'es' if len(self.miembros) > 1 else ''}"
-        ttk.Label(main, text=aviso, font=('TkDefaultFont', 13), foreground='#2196F3').pack(pady=(0, 20))
+        n = len(self.miembros)
+        aviso = f"ℹ  Se crearán {n} pago{'s' if n > 1 else ''} individual{'es' if n > 1 else ''}"
+        ctk.CTkLabel(main, text=aviso,
+                     font=ctk.CTkFont(size=12),
+                     text_color="#2563EB").pack(pady=(0, 16))
 
         # Botones
-        btn_frame = ttk.Frame(main)
+        btn_frame = ctk.CTkFrame(main, fg_color="transparent")
         btn_frame.pack(fill='x')
-        ttk.Button(btn_frame, text="Cancelar", command=self.window.destroy).pack(side='right', padx=(10, 0))
-        ttk.Button(btn_frame, text="Registrar", command=self._registrar).pack(side='right')
+        ctk.CTkButton(btn_frame, text="Cancelar", command=self.window.destroy,
+                      fg_color=_GRAY_BTN, text_color=_TEXT_DARK, hover_color=_GRAY_HOVER,
+                      height=36).pack(side='right', padx=(8, 0))
+        ctk.CTkButton(btn_frame, text="Registrar", command=self._registrar,
+                      fg_color=_ORANGE, hover_color=_ORANGE_DARK,
+                      height=36).pack(side='right')
         self.window.bind('<Return>', lambda e: self._registrar())
 
     def _registrar(self):

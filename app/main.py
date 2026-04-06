@@ -973,22 +973,22 @@ class ReportesFrame(ctk.CTkFrame):
                      corner_radius=0).pack(side="left", fill="y")
 
         title_label = ctk.CTkLabel(control_frame, text="Dashboard Inteligente",
-                                   font=ctk.CTkFont(size=20, weight="bold"),
+                                   font=ctk.CTkFont(size=18, weight="bold"),
                                    text_color=COLORS['TEXT_DARK'])
-        title_label.pack(side="left", padx=12, pady=10)
+        title_label.pack(side="left", padx=12, pady=6)
 
         self.last_update_label = ctk.CTkLabel(control_frame, text="Actualizado: —",
                                               text_color=COLORS['TEXT_SECONDARY'],
-                                              font=ctk.CTkFont(size=12))
-        self.last_update_label.pack(side="left", padx=6)
+                                              font=ctk.CTkFont(size=11))
+        self.last_update_label.pack(side="left", padx=4)
 
         refresh_btn = ctk.CTkButton(control_frame, text="↺  Actualizar",
                                     command=self.actualizar_dashboard,
                                     fg_color=COLORS['SOMA_ORANGE'],
                                     hover_color=COLORS['SOMA_ORANGE_DARK'],
-                                    font=ctk.CTkFont(size=13, weight="bold"),
-                                    width=120, height=32)
-        refresh_btn.pack(side="right", padx=12, pady=8)
+                                    font=ctk.CTkFont(size=12, weight="bold"),
+                                    width=110, height=28)
+        refresh_btn.pack(side="right", padx=10, pady=5)
 
         # ── Filtros rápidos ─────────────────────────────────────────────────
         filters_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -1030,64 +1030,6 @@ class ReportesFrame(ctk.CTkFrame):
                                             text="No hay alertas en este momento",
                                             text_color=COLORS['TEXT_SECONDARY'])
         self.no_alerts_label.pack(pady=18)
-    
-    def create_kpis_frame(self):
-        kpis_frame = ctk.CTkFrame(self)
-        kpis_frame.pack(fill="x", padx=10, pady=(0, 10))
-        
-        title = ctk.CTkLabel(kpis_frame, text="📊 KPIs Principales", 
-                           font=ctk.CTkFont(size=16, weight="bold"))
-        title.pack(pady=(10, 5))
-        
-        # Grid de KPIs
-        grid_frame = ctk.CTkFrame(kpis_frame, fg_color="transparent")
-        grid_frame.pack(fill="x", padx=10, pady=10)
-        
-        # Primera fila
-        row1 = ctk.CTkFrame(grid_frame, fg_color="transparent")
-        row1.pack(fill="x", pady=5)
-        
-        self.total_socios_card = self.create_kpi_card(row1, "Total Socios", "0")
-        self.total_socios_card.pack(side="left", padx=5, fill="x", expand=True)
-        
-        self.activos_card = self.create_kpi_card(row1, "Activos", "0", COLORS['ACTIVE_GREEN'])
-        self.activos_card.pack(side="left", padx=5, fill="x", expand=True)
-        
-        self.vencidos_card = self.create_kpi_card(row1, "Vencidos", "0", COLORS['EXPIRED_RED'])
-        self.vencidos_card.pack(side="left", padx=5, fill="x", expand=True)
-        
-        self.tasa_actividad_card = self.create_kpi_card(row1, "Tasa Actividad", "0%", COLORS['SOMA_ORANGE'])
-        self.tasa_actividad_card.pack(side="left", padx=5, fill="x", expand=True)
-        
-        # Segunda fila
-        row2 = ctk.CTkFrame(grid_frame, fg_color="transparent")
-        row2.pack(fill="x", pady=5)
-        
-        self.ingresos_mes_card = self.create_kpi_card(row2, "Ingresos del Mes", "$0")
-        self.ingresos_mes_card.pack(side="left", padx=5, fill="x", expand=True)
-        
-        self.visitas_hoy_card = self.create_kpi_card(row2, "Visitas Hoy", "0")
-        self.visitas_hoy_card.pack(side="left", padx=5, fill="x", expand=True)
-        
-        self.promedio_visitas_card = self.create_kpi_card(row2, "Promedio Diario", "0")
-        self.promedio_visitas_card.pack(side="left", padx=5, fill="x", expand=True)
-        
-        # Espacio vacío para mantener simetría
-        # Fila extra con nuevos KPIs
-        row3 = ctk.CTkFrame(grid_frame, fg_color="transparent")
-        row3.pack(fill="x", pady=5)
-
-        self.nuevos_mes_card = self.create_kpi_card_interactive(row3, "Nuevos (Mes)", "0")
-        self.nuevos_mes_card.pack(side="left", padx=5, fill="x", expand=True)
-
-        self.renovaciones_mes_card = self.create_kpi_card_interactive(row3, "Renovaciones (Mes)", "0")
-        self.renovaciones_mes_card.pack(side="left", padx=5, fill="x", expand=True)
-
-        spacer = ctk.CTkFrame(row3, fg_color="transparent")
-        spacer.pack(side="left", padx=5, fill="x", expand=True)
-
-        spacer2 = ctk.CTkFrame(row3, fg_color="transparent")
-        spacer2.pack(side="left", padx=5, fill="x", expand=True)
     
     def create_quick_actions_frame(self):
         actions_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -2170,161 +2112,87 @@ class PagosFrame(ctk.CTkFrame):
                                          text_color=COLORS['INFO_BLUE'])
         self.promedio_label.pack(side="left", padx=20, pady=10)
     
+    @staticmethod
+    def _formato_pago(pago):
+        """Retorna (duracion_txt, estado) para un registro de pago."""
+        meses = int(pago.get('meses', 1) or 1)
+        dias_vigencia = meses * 30
+        fecha_pago = datetime.strptime(pago['fecha_pago'], '%Y-%m-%d')
+        dias_transcurridos = (datetime.now() - fecha_pago).days
+        if dias_transcurridos <= dias_vigencia:
+            estado = "✅ Vigente"
+        elif dias_transcurridos <= dias_vigencia + 30:
+            estado = "⚠️ Vencido"
+        else:
+            estado = "❌ Muy Vencido"
+        duracion_txt = f"{meses} mes" if meses == 1 else f"{meses} meses"
+        return duracion_txt, estado
+
+    def _poblar_tabla_pagos(self, pagos, label_prefix="Total"):
+        """Limpia la tabla y la rellena con la lista de pagos dada. Actualiza stats."""
+        for item in self.pagos_tree.get_children():
+            self.pagos_tree.delete(item)
+        total_pagos = 0
+        monto_total = 0.0
+        for pago in pagos:
+            socio = self.db_manager.obtener_socio(pago['dni'])
+            nombre = socio['nombre'] if socio else "Socio no encontrado"
+            duracion_txt, estado = self._formato_pago(pago)
+            self.pagos_tree.insert('', 'end', values=(
+                pago['id'], pago['dni'], nombre,
+                f"${pago['monto']:.2f}", duracion_txt,
+                pago['fecha_pago'], pago['metodo_pago'].title(), estado
+            ))
+            total_pagos += 1
+            monto_total += pago['monto']
+        promedio = monto_total / total_pagos if total_pagos > 0 else 0.0
+        self.total_pagos_label.configure(text=f"{label_prefix}: {total_pagos}")
+        self.monto_total_label.configure(text=f"Monto Total: ${monto_total:.2f}")
+        self.promedio_label.configure(text=f"Promedio: ${promedio:.2f}")
+
     def refrescar_pagos(self):
         """Refresca la lista de pagos desde la base de datos"""
         try:
-            # Limpiar tabla
-            for item in self.pagos_tree.get_children():
-                self.pagos_tree.delete(item)
-            
-            # Obtener todos los pagos
-            pagos = self.db_manager.obtener_todos_los_pagos()
-            
-            total_pagos = 0
-            monto_total = 0.0
-            
-            for pago in pagos:
-                dni = pago['dni']
-
-                # Obtener nombre del socio
-                socio = self.db_manager.obtener_socio(dni)
-                nombre = socio['nombre'] if socio else "Socio no encontrado"
-
-                # Calcular estado usando la duración real del pago
-                meses = int(pago.get('meses', 1) or 1)
-                dias_vigencia = meses * 30
-                fecha_pago = datetime.strptime(pago['fecha_pago'], '%Y-%m-%d')
-                dias_transcurridos = (datetime.now() - fecha_pago).days
-
-                if dias_transcurridos <= dias_vigencia:
-                    estado = "✅ Vigente"
-                elif dias_transcurridos <= dias_vigencia + 30:
-                    estado = "⚠️ Vencido"
-                else:
-                    estado = "❌ Muy Vencido"
-
-                duracion_txt = f"{meses} mes" if meses == 1 else f"{meses} meses"
-
-                # Insertar en la tabla
-                self.pagos_tree.insert('', 'end', values=(
-                    pago['id'],
-                    pago['dni'],
-                    nombre,
-                    f"${pago['monto']:.2f}",
-                    duracion_txt,
-                    pago['fecha_pago'],
-                    pago['metodo_pago'].title(),
-                    estado
-                ))
-                
-                total_pagos += 1
-                monto_total += pago['monto']
-            
-            # Actualizar estadísticas
-            self.total_pagos_label.configure(text=f"Total de Pagos: {total_pagos}")
-            self.monto_total_label.configure(text=f"Monto Total: ${monto_total:.2f}")
-            
-            if total_pagos > 0:
-                promedio = monto_total / total_pagos
-                self.promedio_label.configure(text=f"Promedio: ${promedio:.2f}")
-            else:
-                self.promedio_label.configure(text="Promedio: $0.00")
-                
+            self._poblar_tabla_pagos(self.db_manager.obtener_todos_los_pagos(), "Total pagos")
         except Exception as e:
             logging.error(f"Error al refrescar pagos: {e}")
             messagebox.showerror("Error", f"Error al cargar pagos: {str(e)}")
-    
+
     def filtrar_pagos(self, event=None):
         """Filtra pagos por DNI en tiempo real"""
         dni_filtro = self.dni_filter.get().strip()
-        
         if not dni_filtro:
             self.refrescar_pagos()
             return
-        
         try:
-            # Limpiar tabla
-            for item in self.pagos_tree.get_children():
-                self.pagos_tree.delete(item)
-            
-            # Obtener pagos filtrados por DNI
-            pagos = self.db_manager.obtener_pagos_por_dni(int(dni_filtro))
-            
-            total_pagos = 0
-            monto_total = 0.0
-            
-            for pago in pagos:
-                socio = self.db_manager.obtener_socio_por_dni(pago['dni'])
-                nombre = socio['nombre'] if socio else "Socio no encontrado"
-
-                meses = int(pago.get('meses', 1) or 1)
-                dias_vigencia = meses * 30
-                fecha_pago = datetime.strptime(pago['fecha_pago'], '%Y-%m-%d')
-                dias_transcurridos = (datetime.now() - fecha_pago).days
-
-                if dias_transcurridos <= dias_vigencia:
-                    estado = "✅ Vigente"
-                elif dias_transcurridos <= dias_vigencia + 30:
-                    estado = "⚠️ Vencido"
-                else:
-                    estado = "❌ Muy Vencido"
-
-                duracion_txt = f"{meses} mes" if meses == 1 else f"{meses} meses"
-
-                self.pagos_tree.insert('', 'end', values=(
-                    pago['id'],
-                    pago['dni'],
-                    nombre,
-                    f"${pago['monto']:.2f}",
-                    duracion_txt,
-                    pago['fecha_pago'],
-                    pago['metodo_pago'].title(),
-                    estado
-                ))
-                
-                total_pagos += 1
-                monto_total += pago['monto']
-            
-            # Actualizar estadísticas del filtro
-            self.total_pagos_label.configure(text=f"Pagos Filtrados: {total_pagos}")
-            self.monto_total_label.configure(text=f"Monto Total: ${monto_total:.2f}")
-            
-            if total_pagos > 0:
-                promedio = monto_total / total_pagos
-                self.promedio_label.configure(text=f"Promedio: ${promedio:.2f}")
-            else:
-                self.promedio_label.configure(text="Promedio: $0.00")
-                
+            self._poblar_tabla_pagos(
+                self.db_manager.obtener_pagos_por_dni(int(dni_filtro)), "Filtrados")
         except ValueError:
-            # Si el DNI no es válido, mostrar todos los pagos
             self.refrescar_pagos()
         except Exception as e:
             logging.error(f"Error al filtrar pagos: {e}")
             messagebox.showerror("Error", f"Error al filtrar pagos: {str(e)}")
-    
+
     def aplicar_filtros_fecha(self):
-        """Aplica filtros por rango de fechas"""
+        """Filtra pagos por rango de fechas"""
         fecha_desde = self.fecha_desde.get().strip()
         fecha_hasta = self.fecha_hasta.get().strip()
-        
         if not fecha_desde and not fecha_hasta:
             self.refrescar_pagos()
             return
-        
         try:
-            # Validar fechas
-            if fecha_desde:
-                datetime.strptime(fecha_desde, '%Y-%m-%d')
-            if fecha_hasta:
-                datetime.strptime(fecha_hasta, '%Y-%m-%d')
-            
-            # Aquí implementarías la lógica de filtrado por fecha
-            # Por ahora, solo refrescamos
-            self.refrescar_pagos()
-            messagebox.showinfo("Info", "Filtro de fechas aplicado")
-            
+            dt_desde = datetime.strptime(fecha_desde, '%Y-%m-%d') if fecha_desde else None
+            dt_hasta = datetime.strptime(fecha_hasta, '%Y-%m-%d') if fecha_hasta else None
         except ValueError:
             messagebox.showerror("Error", "Formato de fecha inválido. Use YYYY-MM-DD")
+            return
+        pagos = self.db_manager.obtener_todos_los_pagos()
+        filtrados = [
+            p for p in pagos
+            if (not dt_desde or datetime.strptime(p['fecha_pago'], '%Y-%m-%d') >= dt_desde)
+            and (not dt_hasta or datetime.strptime(p['fecha_pago'], '%Y-%m-%d') <= dt_hasta)
+        ]
+        self._poblar_tabla_pagos(filtrados, "Filtrados")
     
     def limpiar_filtros(self):
         """Limpia todos los filtros aplicados"""
@@ -2335,162 +2203,7 @@ class PagosFrame(ctk.CTkFrame):
     
     def nuevo_pago(self):
         """Abre ventana para registrar nuevo pago"""
-        try:
-            # Crear ventana de nuevo pago
-            pago_window = ctk.CTkToplevel(self)
-            pago_window.title("Registrar Nuevo Pago")
-            pago_window.geometry("500x400")
-            pago_window.resizable(False, False)
-            
-            # Centrar ventana
-            pago_window.transient(self)
-            pago_window.grab_set()
-            
-            # Título
-            title_label = ctk.CTkLabel(pago_window, text="Registrar Nuevo Pago", 
-                                     font=ctk.CTkFont(size=20, weight="bold"))
-            title_label.pack(pady=(20, 30))
-            
-            # Frame para formulario
-            form_frame = ctk.CTkFrame(pago_window)
-            form_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-            
-            # Buscador unificado: DNI o Nombre
-            dni_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-            dni_frame.pack(fill="x", padx=20, pady=10)
-
-            ctk.CTkLabel(dni_frame, text="Buscar:").pack(side="left")
-            search_entry = ctk.CTkEntry(dni_frame, placeholder_text="DNI o nombre...")
-            search_entry.pack(side="right", fill="x", expand=True, padx=(20, 0))
-
-            # Botón validar/buscar por DNI (si lo que hay es numérico)
-            validar_btn = ctk.CTkButton(dni_frame, text="Buscar",
-                                       command=lambda: self._buscar_por_dni_en_entry(search_entry, nombre_label))
-            validar_btn.pack(side="right", padx=(10, 0))
-
-            # Sugerencias dinámicas para texto o DNI parcial
-            suggestions = tk.Listbox(form_frame, height=5)
-            suggestions.pack(fill="x", padx=20)
-
-            def actualizar_sugerencias(event=None):
-                texto = search_entry.get().strip()
-                suggestions.delete(0, tk.END)
-                if not texto:
-                    return
-                try:
-                    resultados = self.db_manager.buscar_socios(texto)
-                    for s in resultados:
-                        suggestions.insert(tk.END, f"{s['nombre']} (DNI {s['dni']})")
-                except Exception:
-                    pass
-
-            def seleccionar_sugerencia(event=None):
-                sel = suggestions.curselection()
-                if not sel:
-                    return
-                item_text = suggestions.get(sel[0])
-                import re
-                m = re.search(r'DNI\s(\d+)', item_text)
-                if not m:
-                    return
-                dni_sel = int(m.group(1))
-                search_entry.delete(0, 'end')
-                search_entry.insert(0, str(dni_sel))
-                socio = self.db_manager.obtener_socio(dni_sel)
-                nombre_label.configure(text=f"Nombre: {socio['nombre']}")
-                try:
-                    monto_entry.focus()
-                except Exception:
-                    pass
-
-            search_entry.bind('<KeyRelease>', actualizar_sugerencias)
-            suggestions.bind('<<ListboxSelect>>', seleccionar_sugerencia)
-
-            # Nombre del socio (se llena al buscar)
-            nombre_label = ctk.CTkLabel(form_frame, text="Nombre: ", 
-                                      font=ctk.CTkFont(size=14))
-            nombre_label.pack(pady=10)
-            
-            # Monto
-            monto_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-            monto_frame.pack(fill="x", padx=20, pady=10)
-            
-            ctk.CTkLabel(monto_frame, text="Monto:").pack(side="left")
-            monto_entry = ctk.CTkEntry(monto_frame, placeholder_text="0.00")
-            monto_entry.pack(side="right", fill="x", expand=True, padx=(20, 0))
-            
-            # Fecha
-            fecha_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-            fecha_frame.pack(fill="x", padx=20, pady=10)
-            
-            ctk.CTkLabel(fecha_frame, text="Fecha:").pack(side="left")
-            fecha_entry = ctk.CTkEntry(fecha_frame, placeholder_text="YYYY-MM-DD")
-            fecha_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
-            fecha_entry.pack(side="right", fill="x", expand=True, padx=(20, 0))
-            
-            # Método de pago
-            metodo_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-            metodo_frame.pack(fill="x", padx=20, pady=10)
-            
-            ctk.CTkLabel(metodo_frame, text="Método:").pack(side="left")
-            metodo_var = ctk.StringVar(value="efectivo")
-            metodo_combo = ctk.CTkComboBox(metodo_frame, values=["efectivo", "transferencia"], 
-                                         variable=metodo_var)
-            metodo_combo.pack(side="right", fill="x", expand=True, padx=(20, 0))
-            
-            # Botones
-            button_frame = ctk.CTkFrame(form_frame, fg_color="transparent")
-            button_frame.pack(fill="x", padx=20, pady=20)
-            
-            def registrar_pago():
-                try:
-                    dni = int(search_entry.get())
-                    monto = float(monto_entry.get())
-                    fecha = fecha_entry.get()
-                    metodo = metodo_var.get()
-                    
-                    # Validar campos
-                    if not dni or not monto or not fecha:
-                        messagebox.showerror("Error", "Todos los campos son obligatorios")
-                        return
-                    
-                    # Registrar pago
-                    self.db_manager.registrar_pago(dni, monto, fecha, metodo)
-                    
-                    messagebox.showinfo("Éxito", "Pago registrado correctamente")
-                    pago_window.destroy()
-                    self.refrescar_pagos()
-                    
-                except ValueError as e:
-                    messagebox.showerror("Error", "Valores inválidos en los campos")
-                except Exception as e:
-                    messagebox.showerror("Error", f"Error al registrar pago: {str(e)}")
-            
-            ctk.CTkButton(button_frame, text="Registrar Pago", 
-                         command=registrar_pago,
-                         fg_color=COLORS['SUCCESS_GREEN']).pack(side="left", padx=(0, 10))
-            
-            ctk.CTkButton(button_frame, text="Cancelar", 
-                         command=pago_window.destroy).pack(side="right")
-            
-        except Exception as e:
-            logging.error(f"Error al crear ventana de nuevo pago: {e}")
-            messagebox.showerror("Error", f"Error al crear ventana: {str(e)}")
-    
-    def _buscar_por_dni_en_entry(self, entry_widget, nombre_label):
-        """Valida entrada numérica en un Entry y muestra el nombre si existe."""
-        try:
-            dni = int(entry_widget.get())
-            socio = self.db_manager.obtener_socio_por_dni(dni)
-            if socio:
-                nombre_label.configure(text=f"Nombre: {socio['nombre']}")
-            else:
-                nombre_label.configure(text="Nombre: Socio no encontrado")
-                messagebox.showwarning("Advertencia", "Socio no encontrado con ese DNI")
-        except ValueError:
-            messagebox.showerror("Error", "Ingrese un DNI válido o seleccione de la lista")
-        except Exception as e:
-            messagebox.showerror("Error", f"Error al buscar socio: {str(e)}")
+        RegistrarPagoWindow(self, self.db_manager, callback=self.refrescar_pagos)
     
     def editar_pago_seleccionado(self, event):
         """Abrir editor rápido (monto y método) para el pago seleccionado"""
