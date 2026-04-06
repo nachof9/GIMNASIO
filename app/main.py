@@ -40,14 +40,16 @@ from PIL import Image
 try:
     from .config import get_log_filename, ensure_directories, resource_path, COLORS, POPUP_AUTOCLOSE_SECONDS, SOUNDS, ALERT_CONFIG, FONTS, OWNER_PIN
     from .db import DatabaseManager
-    from .admin_windows import AltaSocioWindow, EditarSocioWindow, RegistrarPagoWindow, EditarPagoWindow
+    from .admin_windows import (AltaSocioWindow, EditarSocioWindow, RegistrarPagoWindow,
+                                EditarPagoWindow, GrupoFamiliarWindow, RegistrarPagoGrupalWindow)
     from .import_export import ImportExportManager
     from .dashboard_manager import DashboardManager
 except ImportError:
     # Fallback para ejecución directa
     from config import get_log_filename, ensure_directories, resource_path, COLORS, POPUP_AUTOCLOSE_SECONDS, SOUNDS, ALERT_CONFIG, FONTS, OWNER_PIN
     from db import DatabaseManager
-    from admin_windows import AltaSocioWindow, EditarSocioWindow, RegistrarPagoWindow, EditarPagoWindow
+    from admin_windows import (AltaSocioWindow, EditarSocioWindow, RegistrarPagoWindow,
+                               EditarPagoWindow, GrupoFamiliarWindow, RegistrarPagoGrupalWindow)
     from import_export import ImportExportManager
     from dashboard_manager import DashboardManager
 
@@ -303,10 +305,17 @@ class SociosFrame(ctk.CTkFrame):
         title_label.pack(side="left", padx=10, pady=10)
         
         # Botón Nuevo Socio
-        nuevo_btn = ctk.CTkButton(control_frame, text="Nuevo Socio", 
+        nuevo_btn = ctk.CTkButton(control_frame, text="Nuevo Socio",
                                 command=self.nuevo_socio,
                                 font=ctk.CTkFont(**FONTS['BUTTON']))
         nuevo_btn.pack(side="right", padx=10, pady=10)
+
+        # Botón Grupos Familiares
+        grupos_btn = ctk.CTkButton(control_frame, text="👨‍👩‍👧 Grupos Familiares",
+                                   command=self.abrir_gestion_grupos,
+                                   font=ctk.CTkFont(**FONTS['BUTTON']),
+                                   fg_color=COLORS['INFO_BLUE'])
+        grupos_btn.pack(side="right", padx=(0, 5), pady=10)
         
         # Frame de filtros
         filter_frame = ctk.CTkFrame(self)
@@ -341,9 +350,9 @@ class SociosFrame(ctk.CTkFrame):
         table_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
         # Treeview con scrollbar
-        columns = ("DNI", "Nombre", "Email", "Último Pago", "Estado", "Vencimiento", "Acciones")
+        columns = ("DNI", "Nombre", "Email", "Último Pago", "Estado", "Vencimiento", "Grupo", "Acciones")
         self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
-        
+
         # Configurar columnas
         self.tree.heading("DNI", text="DNI")
         self.tree.heading("Nombre", text="Nombre")
@@ -351,16 +360,18 @@ class SociosFrame(ctk.CTkFrame):
         self.tree.heading("Último Pago", text="Último Pago")
         self.tree.heading("Estado", text="Estado")
         self.tree.heading("Vencimiento", text="Vencimiento")
+        self.tree.heading("Grupo", text="Grupo")
         self.tree.heading("Acciones", text="Acciones")
-        
+
         # Ancho de columnas
-        self.tree.column("DNI", width=100)
-        self.tree.column("Nombre", width=200)
-        self.tree.column("Email", width=200)
-        self.tree.column("Último Pago", width=120)
-        self.tree.column("Estado", width=100)
-        self.tree.column("Vencimiento", width=120)
-        self.tree.column("Acciones", width=200)
+        self.tree.column("DNI", width=90)
+        self.tree.column("Nombre", width=170)
+        self.tree.column("Email", width=170)
+        self.tree.column("Último Pago", width=105)
+        self.tree.column("Estado", width=90)
+        self.tree.column("Vencimiento", width=105)
+        self.tree.column("Grupo", width=120)
+        self.tree.column("Acciones", width=120)
         
         # Scrollbar
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
@@ -392,12 +403,13 @@ class SociosFrame(ctk.CTkFrame):
                 ultimo_pago = socio['ultimo_pago'] or "Sin pagos"
                 estado = socio['estado']
                 vencimiento = socio['fecha_vencimiento'] or ""
-                
+                grupo = socio.get('grupo_nombre') or "—"
+
                 # Insertar en tabla
                 item = self.tree.insert("", "end", values=(
-                    dni, nombre, email, ultimo_pago, estado, vencimiento, "Ver acciones"
+                    dni, nombre, email, ultimo_pago, estado, vencimiento, grupo, "Ver acciones"
                 ))
-                
+
                 # Colorear según estado
                 if estado == "Activo":
                     self.tree.set(item, "Estado", "✅ Activo")
@@ -440,11 +452,12 @@ class SociosFrame(ctk.CTkFrame):
                 ultimo_pago = socio['ultimo_pago'] or "Sin pagos"
                 estado = socio['estado']
                 vencimiento = socio['fecha_vencimiento'] or ""
-                
+                grupo = socio.get('grupo_nombre') or "—"
+
                 item = self.tree.insert("", "end", values=(
-                    dni, nombre, email, ultimo_pago, estado, vencimiento, "Ver acciones"
+                    dni, nombre, email, ultimo_pago, estado, vencimiento, grupo, "Ver acciones"
                 ))
-                
+
                 # Colorear según estado
                 if estado == "Activo":
                     self.tree.set(item, "Estado", "✅ Activo")
@@ -579,12 +592,12 @@ class SociosFrame(ctk.CTkFrame):
     
     def eliminar_socio(self, dni, nombre):
         # Doble confirmación
-        if not messagebox.askyesno("Confirmar eliminación", 
+        if not messagebox.askyesno("Confirmar eliminación",
                                   f"¿Está seguro de eliminar al socio {nombre} (DNI: {dni})?\n\n"
                                   "Esta acción eliminará también todos sus pagos y NO se puede deshacer."):
             return
-        
-        if not messagebox.askyesno("Confirmación final", 
+
+        if not messagebox.askyesno("Confirmación final",
                                   f"ÚLTIMA CONFIRMACIÓN:\n\n"
                                   f"Se eliminará permanentemente:\n"
                                   f"• Socio: {nombre}\n"
@@ -592,7 +605,7 @@ class SociosFrame(ctk.CTkFrame):
                                   f"• Todos sus pagos\n\n"
                                   f"¿Continuar?"):
             return
-        
+
         try:
             self.db_manager.eliminar_socio_y_pagos(dni)
             messagebox.showinfo("Éxito", f"Socio {nombre} eliminado correctamente")
@@ -600,6 +613,160 @@ class SociosFrame(ctk.CTkFrame):
         except Exception as e:
             logging.error(f"Error eliminando socio: {e}")
             messagebox.showerror("Error", f"Error al eliminar socio: {str(e)}")
+
+    def abrir_gestion_grupos(self):
+        """Abre la ventana de gestión de grupos familiares."""
+        GruposFamiliaresManagerWindow(self, self.db_manager, callback=self.cargar_socios)
+
+
+class GruposFamiliaresManagerWindow:
+    """Ventana modal para listar, crear, editar, pagar y eliminar grupos familiares."""
+
+    def __init__(self, parent, db_manager, callback=None):
+        self.db_manager = db_manager
+        self.callback = callback
+
+        self.window = ctk.CTkToplevel(parent)
+        self.window.title("Grupos Familiares")
+        self.window.geometry("680x500")
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.window.update_idletasks()
+        x = (self.window.winfo_screenwidth() // 2) - 340
+        y = (self.window.winfo_screenheight() // 2) - 250
+        self.window.geometry(f"680x500+{x}+{y}")
+
+        self._create_widgets()
+        self._cargar_grupos()
+
+    def _create_widgets(self):
+        # Encabezado
+        header = ctk.CTkFrame(self.window, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=(15, 5))
+        ctk.CTkLabel(header, text="Grupos Familiares",
+                     font=ctk.CTkFont(size=22, weight="bold"),
+                     text_color=COLORS['SOMA_ORANGE']).pack(side="left")
+        ctk.CTkButton(header, text="+ Nuevo Grupo",
+                      command=self._nuevo_grupo,
+                      fg_color=COLORS['SUCCESS_GREEN'],
+                      font=ctk.CTkFont(size=14, weight="bold")).pack(side="right")
+
+        # Tabla de grupos
+        table_frame = ctk.CTkFrame(self.window)
+        table_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        cols = ("ID", "Nombre del grupo", "Miembros", "Precio especial")
+        self.grupos_tree = ttk.Treeview(table_frame, columns=cols, show="headings", height=12)
+        self.grupos_tree.heading("ID", text="ID")
+        self.grupos_tree.heading("Nombre del grupo", text="Nombre del grupo")
+        self.grupos_tree.heading("Miembros", text="Miembros")
+        self.grupos_tree.heading("Precio especial", text="Precio especial")
+        self.grupos_tree.column("ID", width=45)
+        self.grupos_tree.column("Nombre del grupo", width=260)
+        self.grupos_tree.column("Miembros", width=90)
+        self.grupos_tree.column("Precio especial", width=130)
+
+        sb = ttk.Scrollbar(table_frame, orient="vertical", command=self.grupos_tree.yview)
+        self.grupos_tree.configure(yscrollcommand=sb.set)
+        self.grupos_tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        self.grupos_tree.bind("<Double-1>", lambda e: self._editar_grupo_seleccionado())
+        self.grupos_tree.bind("<Button-3>", self._menu_contextual)
+
+        # Botones de acción
+        btn_frame = ctk.CTkFrame(self.window, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=20, pady=(0, 15))
+        ctk.CTkButton(btn_frame, text="Editar grupo",
+                      command=self._editar_grupo_seleccionado,
+                      width=130).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_frame, text="💳 Registrar Pago",
+                      command=self._pago_grupal_seleccionado,
+                      fg_color=COLORS['SUCCESS_GREEN'],
+                      width=160).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_frame, text="Eliminar",
+                      command=self._eliminar_grupo_seleccionado,
+                      fg_color=COLORS['ERROR_RED'],
+                      width=100).pack(side="left")
+        ctk.CTkButton(btn_frame, text="Cerrar",
+                      command=self.window.destroy,
+                      width=100).pack(side="right")
+
+    def _cargar_grupos(self):
+        for item in self.grupos_tree.get_children():
+            self.grupos_tree.delete(item)
+        for g in self.db_manager.listar_grupos():
+            precio = f"${g['precio_especial']:.2f}" if g['precio_especial'] else "—"
+            self.grupos_tree.insert("", "end", values=(
+                g['id'], g['nombre'], g['cantidad_miembros'], precio
+            ))
+
+    def _get_grupo_seleccionado(self):
+        sel = self.grupos_tree.selection()
+        if not sel:
+            messagebox.showwarning("Atención", "Seleccione un grupo de la lista")
+            return None
+        return self.grupos_tree.item(sel[0])['values']
+
+    def _nuevo_grupo(self):
+        GrupoFamiliarWindow(self.window, self.db_manager, callback=self._on_cambio)
+
+    def _editar_grupo_seleccionado(self):
+        vals = self._get_grupo_seleccionado()
+        if not vals:
+            return
+        GrupoFamiliarWindow(self.window, self.db_manager, grupo_id=int(vals[0]), callback=self._on_cambio)
+
+    def _pago_grupal_seleccionado(self):
+        vals = self._get_grupo_seleccionado()
+        if not vals:
+            return
+        RegistrarPagoGrupalWindow(self.window, self.db_manager, grupo_id=int(vals[0]),
+                                   callback=self._on_cambio)
+
+    def _eliminar_grupo_seleccionado(self):
+        vals = self._get_grupo_seleccionado()
+        if not vals:
+            return
+        grupo_id, nombre = int(vals[0]), vals[1]
+        if not messagebox.askyesno("Confirmar",
+                                   f"¿Eliminar el grupo '{nombre}'?\n\n"
+                                   "Los socios del grupo NO se eliminarán, solo se desvinculan."):
+            return
+        try:
+            self.db_manager.eliminar_grupo(grupo_id)
+            self._on_cambio()
+            messagebox.showinfo("Éxito", f"Grupo '{nombre}' eliminado")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo eliminar: {str(e)}")
+
+    def _menu_contextual(self, event):
+        sel = self.grupos_tree.identify_row(event.y)
+        if not sel:
+            return
+        self.grupos_tree.selection_set(sel)
+        vals = self.grupos_tree.item(sel)['values']
+        grupo_id, nombre = int(vals[0]), vals[1]
+        menu = tk.Menu(self.window, tearoff=0)
+        menu.add_command(label="Editar grupo",
+                         command=lambda: GrupoFamiliarWindow(
+                             self.window, self.db_manager, grupo_id=grupo_id, callback=self._on_cambio))
+        menu.add_command(label="💳 Registrar Pago",
+                         command=lambda: RegistrarPagoGrupalWindow(
+                             self.window, self.db_manager, grupo_id=grupo_id, callback=self._on_cambio))
+        menu.add_separator()
+        menu.add_command(label="Eliminar grupo",
+                         command=self._eliminar_grupo_seleccionado)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _on_cambio(self):
+        self._cargar_grupos()
+        if self.callback:
+            self.callback()
+
 
 class IngresosFrame(ctk.CTkFrame):
     def __init__(self, parent, db_manager):
@@ -786,33 +953,56 @@ class ReportesFrame(ctk.CTkFrame):
         self.actualizar_dashboard()
         self.schedule_dashboard_refresh()
     
+    def _section_title(self, parent, texto):
+        """Helper: título de sección con barra naranja a la izquierda."""
+        f = ctk.CTkFrame(parent, fg_color="transparent")
+        f.pack(fill='x', padx=5, pady=(12, 4))
+        ctk.CTkFrame(f, width=4, height=22, fg_color=COLORS['SOMA_ORANGE'],
+                     corner_radius=2).pack(side='left', padx=(4, 8))
+        ctk.CTkLabel(f, text=texto, font=ctk.CTkFont(size=15, weight='bold'),
+                     text_color=COLORS['TEXT_DARK']).pack(side='left')
+
     def create_widgets(self):
-        # Frame superior
-        control_frame = ctk.CTkFrame(self)
-        control_frame.pack(fill="x", padx=10, pady=10)
-        
-        title_label = ctk.CTkLabel(control_frame, text="Dashboard Inteligente", 
-                                 font=ctk.CTkFont(size=20, weight="bold"))
-        title_label.pack(side="left", padx=10, pady=10)
-        
-        # Última actualización
-        self.last_update_label = ctk.CTkLabel(control_frame, text="Actualizado: —", text_color="gray")
-        self.last_update_label.pack(side="left", padx=10)
-        
-        # Botón actualizar
-        refresh_btn = ctk.CTkButton(control_frame, text="Actualizar", 
-                                  command=self.actualizar_dashboard)
-        refresh_btn.pack(side="right", padx=10, pady=10)
-        
-        # Filtros rápidos
+        # ── Encabezado del dashboard ────────────────────────────────────────
+        control_frame = ctk.CTkFrame(self, fg_color=COLORS['SOMA_ORANGE_LIGHT'],
+                                     border_width=1, border_color=COLORS['BORDER_SUBTLE'])
+        control_frame.pack(fill="x", padx=10, pady=(10, 6))
+
+        # Barra lateral naranja + título
+        ctk.CTkFrame(control_frame, width=5, fg_color=COLORS['SOMA_ORANGE'],
+                     corner_radius=0).pack(side="left", fill="y")
+
+        title_label = ctk.CTkLabel(control_frame, text="Dashboard Inteligente",
+                                   font=ctk.CTkFont(size=20, weight="bold"),
+                                   text_color=COLORS['TEXT_DARK'])
+        title_label.pack(side="left", padx=12, pady=10)
+
+        self.last_update_label = ctk.CTkLabel(control_frame, text="Actualizado: —",
+                                              text_color=COLORS['TEXT_SECONDARY'],
+                                              font=ctk.CTkFont(size=12))
+        self.last_update_label.pack(side="left", padx=6)
+
+        refresh_btn = ctk.CTkButton(control_frame, text="↺  Actualizar",
+                                    command=self.actualizar_dashboard,
+                                    fg_color=COLORS['SOMA_ORANGE'],
+                                    hover_color=COLORS['SOMA_ORANGE_DARK'],
+                                    font=ctk.CTkFont(size=13, weight="bold"),
+                                    width=120, height=32)
+        refresh_btn.pack(side="right", padx=12, pady=8)
+
+        # ── Filtros rápidos ─────────────────────────────────────────────────
         filters_frame = ctk.CTkFrame(self, fg_color="transparent")
-        filters_frame.pack(fill="x", padx=10, pady=(0, 10))
-        ctk.CTkLabel(filters_frame, text="Rango:").pack(side="left", padx=(10, 5))
-        ctk.CTkButton(filters_frame, text="Hoy", width=90, command=lambda: self._set_range_and_refresh('1d')).pack(side="left", padx=5)
-        ctk.CTkButton(filters_frame, text="7 días", width=90, command=lambda: self._set_range_and_refresh('7d')).pack(side="left", padx=5)
-        ctk.CTkButton(filters_frame, text="30 días", width=90, command=lambda: self._set_range_and_refresh('30d')).pack(side="left", padx=5)
-        ctk.CTkButton(filters_frame, text="90 días", width=90, command=lambda: self._set_range_and_refresh('90d')).pack(side="left", padx=5)
-        ctk.CTkButton(filters_frame, text="Todo", width=90, command=lambda: self._set_range_and_refresh('all')).pack(side="left", padx=5)
+        filters_frame.pack(fill="x", padx=10, pady=(0, 8))
+        ctk.CTkLabel(filters_frame, text="Rango:",
+                     text_color=COLORS['TEXT_SECONDARY']).pack(side="left", padx=(10, 5))
+        range_btn_style = dict(width=85, height=30, fg_color=COLORS['SURFACE_GRAY'],
+                                text_color=COLORS['TEXT_DARK'],
+                                hover_color=COLORS['SOMA_ORANGE_LIGHT'],
+                                border_width=1, border_color=COLORS['BORDER_SUBTLE'])
+        for label, key in [("Hoy","1d"),("7 días","7d"),("30 días","30d"),("90 días","90d"),("Todo","all")]:
+            ctk.CTkButton(filters_frame, text=label,
+                          command=lambda k=key: self._set_range_and_refresh(k),
+                          **range_btn_style).pack(side="left", padx=4)
         
         self.create_alerts_frame()
         
@@ -825,25 +1015,21 @@ class ReportesFrame(ctk.CTkFrame):
         self.create_recent_activity_frame()
     
     def create_alerts_frame(self):
-        alerts_frame = ctk.CTkFrame(self)
-        alerts_frame.pack(fill="x", padx=10, pady=(0, 10))
-        
-        title = ctk.CTkLabel(alerts_frame, text="🚨 Alertas Inteligentes", 
-                           font=ctk.CTkFont(size=16, weight="bold"))
-        title.pack(pady=(10, 5))
-        title = ctk.CTkLabel(alerts_frame, text="🚨 Alertas Inteligentes", 
-                           font=ctk.CTkFont(size=16, weight="bold"))
-        title.pack(pady=(10, 5))
-        
-        # Scrollable frame para alertas
-        self.alerts_scroll = ctk.CTkScrollableFrame(alerts_frame, height=120)
-        self.alerts_scroll.pack(fill="x", padx=10, pady=(0, 10))
-        
-        # Placeholder inicial
-        self.no_alerts_label = ctk.CTkLabel(self.alerts_scroll, 
-                                          text="No hay alertas en este momento",
-                                          text_color="gray")
-        self.no_alerts_label.pack(pady=20)
+        alerts_frame = ctk.CTkFrame(self, fg_color="transparent")
+        alerts_frame.pack(fill="x", padx=10, pady=(0, 6))
+
+        self._section_title(alerts_frame, "🚨  Alertas")
+
+        self.alerts_scroll = ctk.CTkScrollableFrame(
+            alerts_frame, height=110,
+            fg_color=COLORS['CARD_BG'],
+            border_width=1, border_color=COLORS['BORDER_SUBTLE'])
+        self.alerts_scroll.pack(fill="x", padx=5, pady=(0, 6))
+
+        self.no_alerts_label = ctk.CTkLabel(self.alerts_scroll,
+                                            text="No hay alertas en este momento",
+                                            text_color=COLORS['TEXT_SECONDARY'])
+        self.no_alerts_label.pack(pady=18)
     
     def create_kpis_frame(self):
         kpis_frame = ctk.CTkFrame(self)
@@ -904,114 +1090,132 @@ class ReportesFrame(ctk.CTkFrame):
         spacer2.pack(side="left", padx=5, fill="x", expand=True)
     
     def create_quick_actions_frame(self):
-        actions_frame = ctk.CTkFrame(self)
-        actions_frame.pack(fill="x", padx=10, pady=(0, 10))
-        
-        title = ctk.CTkLabel(actions_frame, text="⚡ Acciones Rápidas", 
-                           font=ctk.CTkFont(size=16, weight="bold"))
-        title.pack(pady=(10, 5))
-        
-        # Frame para botones de acciones
+        actions_frame = ctk.CTkFrame(self, fg_color="transparent")
+        actions_frame.pack(fill="x", padx=10, pady=(0, 6))
+
+        self._section_title(actions_frame, "⚡  Acciones rápidas")
+
         self.actions_container = ctk.CTkFrame(actions_frame, fg_color="transparent")
-        self.actions_container.pack(fill="x", padx=10, pady=(0, 10))
-        
-        # Placeholder inicial
-        self.no_actions_label = ctk.CTkLabel(self.actions_container, 
-                                           text="No hay acciones sugeridas",
-                                           text_color="gray")
-        self.no_actions_label.pack(pady=20)
+        self.actions_container.pack(fill="x", padx=5, pady=(0, 6))
+
+        self.no_actions_label = ctk.CTkLabel(self.actions_container,
+                                             text="No hay acciones sugeridas",
+                                             text_color=COLORS['TEXT_SECONDARY'])
+        self.no_actions_label.pack(pady=16)
     
     def create_recent_activity_frame(self):
-        activity_frame = ctk.CTkFrame(self)
+        activity_frame = ctk.CTkFrame(self, fg_color="transparent")
         activity_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        
-        title = ctk.CTkLabel(activity_frame, text="📈 Actividad Reciente", 
-                           font=ctk.CTkFont(size=16, weight="bold"))
-        title.pack(pady=(10, 5))
-        
-        # Lista scrollable de actividad
-        self.activity_scroll = ctk.CTkScrollableFrame(activity_frame, height=200)
-        self.activity_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        
-        # Placeholder inicial
-        self.no_activity_label = ctk.CTkLabel(self.activity_scroll, 
-                                            text="No hay actividad reciente",
-                                            text_color="gray")
+
+        self._section_title(activity_frame, "📈  Actividad reciente")
+
+        self.activity_scroll = ctk.CTkScrollableFrame(
+            activity_frame, height=200,
+            fg_color=COLORS['CARD_BG'],
+            border_width=1, border_color=COLORS['BORDER_SUBTLE'])
+        self.activity_scroll.pack(fill="both", expand=True, padx=5, pady=(0, 10))
+
+        self.no_activity_label = ctk.CTkLabel(self.activity_scroll,
+                                              text="No hay actividad reciente",
+                                              text_color=COLORS['TEXT_SECONDARY'])
         self.no_activity_label.pack(pady=20)
 
     def create_kpis_frame_v2(self):
-        kpis_frame = ctk.CTkFrame(self)
-        kpis_frame.pack(fill="x", padx=10, pady=(0, 10))
+        kpis_frame = ctk.CTkFrame(self, fg_color="transparent")
+        kpis_frame.pack(fill="x", padx=10, pady=(0, 6))
 
-        title = ctk.CTkLabel(kpis_frame, text="KPIs Principales", font=ctk.CTkFont(size=16, weight="bold"))
-        title.pack(pady=(10, 5))
+        self._section_title(kpis_frame, "Métricas principales")
 
         grid_frame = ctk.CTkFrame(kpis_frame, fg_color="transparent")
-        grid_frame.pack(fill="x", padx=10, pady=10)
+        grid_frame.pack(fill="x", padx=5, pady=(4, 8))
 
         row1 = ctk.CTkFrame(grid_frame, fg_color="transparent")
-        row1.pack(fill="x", pady=5)
+        row1.pack(fill="x", pady=4)
 
-        self.total_socios_card = self.create_kpi_card_interactive(row1, "Total Socios", "0",
-                                                                  on_click=lambda: self._go_to_socios())
-        self.total_socios_card.pack(side="left", padx=5, fill="x", expand=True)
+        self.total_socios_card = self.create_kpi_card_interactive(
+            row1, "Total Socios", "0", COLORS['SOMA_ORANGE'],
+            on_click=lambda: self._go_to_socios())
+        self.total_socios_card.pack(side="left", padx=4, fill="x", expand=True)
 
-        self.activos_card = self.create_kpi_card_interactive(row1, "Activos", "0", COLORS['ACTIVE_GREEN'],
-                                                             on_click=lambda: self._go_to_socios("Activos"))
-        self.activos_card.pack(side="left", padx=5, fill="x", expand=True)
+        self.activos_card = self.create_kpi_card_interactive(
+            row1, "Activos", "0", COLORS['ACTIVE_GREEN'],
+            on_click=lambda: self._go_to_socios("Activos"))
+        self.activos_card.pack(side="left", padx=4, fill="x", expand=True)
 
-        self.vencidos_card = self.create_kpi_card_interactive(row1, "Vencidos", "0", COLORS['EXPIRED_RED'],
-                                                              on_click=lambda: self._go_to_socios("Vencidos"))
-        self.vencidos_card.pack(side="left", padx=5, fill="x", expand=True)
+        self.vencidos_card = self.create_kpi_card_interactive(
+            row1, "Vencidos", "0", COLORS['EXPIRED_RED'],
+            on_click=lambda: self._go_to_socios("Vencidos"))
+        self.vencidos_card.pack(side="left", padx=4, fill="x", expand=True)
 
-        self.tasa_actividad_card = self.create_kpi_card_interactive(row1, "Tasa Actividad", "0%", COLORS['SOMA_ORANGE'])
-        self.tasa_actividad_card.pack(side="left", padx=5, fill="x", expand=True)
+        self.tasa_actividad_card = self.create_kpi_card_interactive(
+            row1, "Tasa Actividad", "0%", COLORS['SOMA_ORANGE'])
+        self.tasa_actividad_card.pack(side="left", padx=4, fill="x", expand=True)
 
         row2 = ctk.CTkFrame(grid_frame, fg_color="transparent")
-        row2.pack(fill="x", pady=5)
+        row2.pack(fill="x", pady=4)
 
-        self.ingresos_mes_card = self.create_kpi_card_interactive(row2, "Ingresos del Mes", "$0",
-                                                                  on_click=lambda: self._go_to_ingresos())
-        self.ingresos_mes_card.pack(side="left", padx=5, fill="x", expand=True)
+        self.ingresos_mes_card = self.create_kpi_card_interactive(
+            row2, "Ingresos del Mes", "$0", COLORS['SOMA_ORANGE'],
+            on_click=lambda: self._go_to_ingresos())
+        self.ingresos_mes_card.pack(side="left", padx=4, fill="x", expand=True)
 
-        self.visitas_hoy_card = self.create_kpi_card_interactive(row2, "Visitas Hoy", "0")
-        self.visitas_hoy_card.pack(side="left", padx=5, fill="x", expand=True)
+        self.visitas_hoy_card = self.create_kpi_card_interactive(
+            row2, "Visitas Hoy", "0", COLORS['INFO_BLUE'])
+        self.visitas_hoy_card.pack(side="left", padx=4, fill="x", expand=True)
 
-        self.promedio_visitas_card = self.create_kpi_card_interactive(row2, "Promedio Diario", "0")
-        self.promedio_visitas_card.pack(side="left", padx=5, fill="x", expand=True)
+        self.promedio_visitas_card = self.create_kpi_card_interactive(
+            row2, "Promedio Diario", "0", COLORS['INFO_BLUE'])
+        self.promedio_visitas_card.pack(side="left", padx=4, fill="x", expand=True)
 
-        empty_card = ctk.CTkFrame(row2, fg_color="transparent")
-        empty_card.pack(side="left", padx=5, fill="x", expand=True)
+        ctk.CTkFrame(row2, fg_color="transparent").pack(side="left", padx=4, fill="x", expand=True)
 
-        # Holder para gráfico donut
-        self.kpi_chart_holder = ctk.CTkFrame(kpis_frame)
-        self.kpi_chart_holder.pack(fill='x', padx=10, pady=(0,10))
-        ctk.CTkLabel(self.kpi_chart_holder, text="Activos vs Vencidos", font=ctk.CTkFont(size=16, weight='bold')).pack(pady=(10,5))
+        # ── Holders de gráficos ─────────────────────────────────────────────
+        self._section_title(kpis_frame, "Distribución de socios")
+        self.kpi_chart_holder = ctk.CTkFrame(kpis_frame, fg_color=COLORS['CARD_BG'],
+                                             border_width=1, border_color=COLORS['BORDER_SUBTLE'])
+        self.kpi_chart_holder.pack(fill='x', padx=5, pady=(0, 8))
 
-        # Holder para gráfico de métodos de pago (mes)
-        self.payment_methods_chart_holder = ctk.CTkFrame(kpis_frame)
-        self.payment_methods_chart_holder.pack(fill='x', padx=10, pady=(0,10))
-        ctk.CTkLabel(self.payment_methods_chart_holder, text="Métodos de pago (mes)", font=ctk.CTkFont(size=16, weight='bold')).pack(pady=(10,5))
+        self._section_title(kpis_frame, "Métodos de pago del mes")
+        self.payment_methods_chart_holder = ctk.CTkFrame(kpis_frame, fg_color=COLORS['CARD_BG'],
+                                                          border_width=1, border_color=COLORS['BORDER_SUBTLE'])
+        self.payment_methods_chart_holder.pack(fill='x', padx=5, pady=(0, 8))
 
-        # Holder para línea de ingresos (30 días o rango)
-        self.income_line_holder = ctk.CTkFrame(kpis_frame)
-        self.income_line_holder.pack(fill='both', expand=True, padx=10, pady=(0,10))
-        ctk.CTkLabel(self.income_line_holder, text="Ingresos por día", font=ctk.CTkFont(size=16, weight='bold')).pack(pady=(10,5))
+        self._section_title(kpis_frame, "Ingresos por día")
+        self.income_line_holder = ctk.CTkFrame(kpis_frame, fg_color=COLORS['CARD_BG'],
+                                               border_width=1, border_color=COLORS['BORDER_SUBTLE'])
+        self.income_line_holder.pack(fill='both', expand=True, padx=5, pady=(0, 8))
 
-    def create_kpi_card_interactive(self, parent, titulo, valor, color=None, on_click=None):
-        card = ctk.CTkFrame(parent, fg_color=color or "#EFEFEF")
+    def create_kpi_card_interactive(self, parent, titulo, valor, accent_color=None, on_click=None):
+        """KPI card con fondo blanco, borde sutil y barra lateral de color semántico."""
+        accent = accent_color or COLORS['SOMA_ORANGE']
+
+        card = ctk.CTkFrame(parent,
+                            fg_color=COLORS['CARD_BG'],
+                            border_width=1,
+                            border_color=COLORS['BORDER_SUBTLE'],
+                            corner_radius=8)
         card.pack_propagate(False)
 
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=10, pady=10)
+        # Barra lateral de acento (4px)
+        bar = ctk.CTkFrame(card, width=4, fg_color=accent, corner_radius=2)
+        bar.pack(side="left", fill="y", padx=(0, 0))
 
-        title_label = ctk.CTkLabel(inner, text=titulo, font=ctk.CTkFont(**FONTS['CAPTION']))
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=(10, 10), pady=10)
+
+        title_label = ctk.CTkLabel(inner, text=titulo,
+                                   font=ctk.CTkFont(size=11),
+                                   text_color=COLORS['TEXT_SECONDARY'])
         title_label.pack(anchor="w")
 
-        value_label = ctk.CTkLabel(inner, text=valor, font=ctk.CTkFont(**FONTS['HEADER']))
-        value_label.pack(anchor="w", pady=(4, 2))
+        value_label = ctk.CTkLabel(inner, text=valor,
+                                   font=ctk.CTkFont(size=28, weight="bold"),
+                                   text_color=COLORS['TEXT_DARK'])
+        value_label.pack(anchor="w", pady=(3, 1))
 
-        delta_label = ctk.CTkLabel(inner, text="", text_color="gray")
+        delta_label = ctk.CTkLabel(inner, text="",
+                                   font=ctk.CTkFont(size=11),
+                                   text_color=COLORS['TEXT_SECONDARY'])
         delta_label.pack(anchor="w")
 
         card.value_label = value_label
@@ -1023,10 +1227,13 @@ class ReportesFrame(ctk.CTkFrame):
                     on_click()
                 except Exception as e:
                     logging.warning(f"Error en click KPI {titulo}: {e}")
-            for w in (card, inner, title_label, value_label, delta_label):
+            for w in (card, bar, inner, title_label, value_label, delta_label):
                 w.bind('<Button-1>', handler)
+            # Efecto hover suave
+            card.bind('<Enter>', lambda e: card.configure(border_color=accent))
+            card.bind('<Leave>', lambda e: card.configure(border_color=COLORS['BORDER_SUBTLE']))
 
-        card.configure(height=100)
+        card.configure(height=110)
         return card
 
     def create_kpi_card(self, parent, titulo, valor, color=None):
@@ -1183,24 +1390,35 @@ class ReportesFrame(ctk.CTkFrame):
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
         except Exception:
             return
+        ORANGE = COLORS['SOMA_ORANGE']
         dates = [item.get('fecha') for item in income_series]
         totals = [float(item.get('total', 0) or 0) for item in income_series]
+
+        def _draw_line(ax):
+            ax.clear()
+            ax.plot(dates, totals, marker='o', color=ORANGE, linewidth=2, markersize=5)
+            if dates and totals:
+                ax.fill_between(range(len(dates)), totals, alpha=0.12, color=ORANGE)
+                ax.set_xticks(range(len(dates)))
+                ax.set_xticklabels(dates, rotation=45, ha='right', fontsize=8)
+            ax.set_ylabel('Monto ($)', fontsize=9)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.grid(True, linestyle='--', alpha=0.2)
+            ax.tick_params(axis='both', labelsize=8)
+
         if not hasattr(self, 'income_line_figure'):
             self.income_line_figure = plt.Figure(figsize=(6.4, 2.8), dpi=100)
+            self.income_line_figure.patch.set_facecolor('#FFFFFF')
             ax = self.income_line_figure.add_subplot(111)
-            ax.plot(dates, totals, marker='o', color='#1f77b4')
-            ax.set_ylabel('Monto')
-            ax.tick_params(axis='x', rotation=45)
-            ax.grid(True, linestyle='--', alpha=0.3)
+            _draw_line(ax)
+            self.income_line_figure.tight_layout(pad=1.5)
             self.income_line_canvas = FigureCanvasTkAgg(self.income_line_figure, master=self.income_line_holder)
             self.income_line_canvas.get_tk_widget().pack(fill='both', expand=True)
         else:
             ax = self.income_line_figure.axes[0]
-            ax.clear()
-            ax.plot(dates, totals, marker='o', color='#1f77b4')
-            ax.set_ylabel('Monto')
-            ax.tick_params(axis='x', rotation=45)
-            ax.grid(True, linestyle='--', alpha=0.3)
+            _draw_line(ax)
+            self.income_line_figure.tight_layout(pad=1.5)
             self.income_line_canvas.draw()
 
     def _update_payment_methods_donut(self, methods):
@@ -1897,26 +2115,28 @@ class PagosFrame(ctk.CTkFrame):
         table_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         
         # Crear Treeview para pagos
-        columns = ('ID', 'DNI', 'Nombre', 'Monto', 'Fecha', 'Método', 'Estado')
+        columns = ('ID', 'DNI', 'Nombre', 'Monto', 'Duración', 'Fecha', 'Método', 'Estado')
         self.pagos_tree = ttk.Treeview(table_frame, columns=columns, show='headings', height=15)
-        
+
         # Configurar columnas
         self.pagos_tree.heading('ID', text='ID')
         self.pagos_tree.heading('DNI', text='DNI')
         self.pagos_tree.heading('Nombre', text='Nombre del Socio')
         self.pagos_tree.heading('Monto', text='Monto')
+        self.pagos_tree.heading('Duración', text='Duración')
         self.pagos_tree.heading('Fecha', text='Fecha de Pago')
         self.pagos_tree.heading('Método', text='Método')
         self.pagos_tree.heading('Estado', text='Estado')
-        
+
         # Configurar anchos de columna
         self.pagos_tree.column('ID', width=50)
         self.pagos_tree.column('DNI', width=100)
-        self.pagos_tree.column('Nombre', width=200)
-        self.pagos_tree.column('Monto', width=100)
-        self.pagos_tree.column('Fecha', width=120)
+        self.pagos_tree.column('Nombre', width=185)
+        self.pagos_tree.column('Monto', width=90)
+        self.pagos_tree.column('Duración', width=80)
+        self.pagos_tree.column('Fecha', width=110)
         self.pagos_tree.column('Método', width=100)
-        self.pagos_tree.column('Estado', width=100)
+        self.pagos_tree.column('Estado', width=110)
         
         # Scrollbar
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.pagos_tree.yview)
@@ -1969,24 +2189,29 @@ class PagosFrame(ctk.CTkFrame):
                 # Obtener nombre del socio
                 socio = self.db_manager.obtener_socio(dni)
                 nombre = socio['nombre'] if socio else "Socio no encontrado"
-                
-                # Calcular estado basado en la fecha
+
+                # Calcular estado usando la duración real del pago
+                meses = int(pago.get('meses', 1) or 1)
+                dias_vigencia = meses * 30
                 fecha_pago = datetime.strptime(pago['fecha_pago'], '%Y-%m-%d')
                 dias_transcurridos = (datetime.now() - fecha_pago).days
-                
-                if dias_transcurridos <= 30:
+
+                if dias_transcurridos <= dias_vigencia:
                     estado = "✅ Vigente"
-                elif dias_transcurridos <= 60:
+                elif dias_transcurridos <= dias_vigencia + 30:
                     estado = "⚠️ Vencido"
                 else:
                     estado = "❌ Muy Vencido"
-                
+
+                duracion_txt = f"{meses} mes" if meses == 1 else f"{meses} meses"
+
                 # Insertar en la tabla
                 self.pagos_tree.insert('', 'end', values=(
                     pago['id'],
                     pago['dni'],
                     nombre,
                     f"${pago['monto']:.2f}",
+                    duracion_txt,
                     pago['fecha_pago'],
                     pago['metodo_pago'].title(),
                     estado
@@ -2031,22 +2256,27 @@ class PagosFrame(ctk.CTkFrame):
             for pago in pagos:
                 socio = self.db_manager.obtener_socio_por_dni(pago['dni'])
                 nombre = socio['nombre'] if socio else "Socio no encontrado"
-                
+
+                meses = int(pago.get('meses', 1) or 1)
+                dias_vigencia = meses * 30
                 fecha_pago = datetime.strptime(pago['fecha_pago'], '%Y-%m-%d')
                 dias_transcurridos = (datetime.now() - fecha_pago).days
-                
-                if dias_transcurridos <= 30:
+
+                if dias_transcurridos <= dias_vigencia:
                     estado = "✅ Vigente"
-                elif dias_transcurridos <= 60:
+                elif dias_transcurridos <= dias_vigencia + 30:
                     estado = "⚠️ Vencido"
                 else:
                     estado = "❌ Muy Vencido"
-                
+
+                duracion_txt = f"{meses} mes" if meses == 1 else f"{meses} meses"
+
                 self.pagos_tree.insert('', 'end', values=(
                     pago['id'],
                     pago['dni'],
                     nombre,
                     f"${pago['monto']:.2f}",
+                    duracion_txt,
                     pago['fecha_pago'],
                     pago['metodo_pago'].title(),
                     estado
@@ -2302,7 +2532,7 @@ class PagosFrame(ctk.CTkFrame):
 
         win = ctk.CTkToplevel(self)
         win.title(f"Editar Pago #{pago_id}")
-        win.geometry("380x260")
+        win.geometry("380x340")
         win.resizable(False, False)
         win.grab_set()
 
@@ -2315,6 +2545,19 @@ class PagosFrame(ctk.CTkFrame):
         monto_entry = ctk.CTkEntry(monto_frame)
         monto_entry.insert(0, str(pago['monto']))
         monto_entry.pack(side='right', fill='x', expand=True, padx=(20,0))
+
+        # Duración
+        duracion_frame = ctk.CTkFrame(win, fg_color="transparent")
+        duracion_frame.pack(fill='x', padx=20, pady=10)
+        ctk.CTkLabel(duracion_frame, text="Duración:").pack(anchor='w', pady=(0, 5))
+        meses_actual = int(pago.get('meses', 1) or 1)
+        if meses_actual not in (1, 3, 6, 12):
+            meses_actual = 1
+        meses_var = ctk.IntVar(value=meses_actual)
+        meses_btns = ctk.CTkFrame(duracion_frame, fg_color="transparent")
+        meses_btns.pack(fill='x')
+        for m, lbl in [(1, "1 mes"), (3, "3 m"), (6, "6 m"), (12, "12 m")]:
+            ctk.CTkRadioButton(meses_btns, text=lbl, variable=meses_var, value=m).pack(side='left', padx=4)
 
         # Método
         metodo_frame = ctk.CTkFrame(win, fg_color="transparent")
@@ -2341,8 +2584,7 @@ class PagosFrame(ctk.CTkFrame):
                 messagebox.showerror("Error", "Método inválido")
                 return
             try:
-                # Solo monto y método. Mantener DNI y fecha originales
-                self.db_manager.editar_pago(pago_id, pago['dni'], monto, pago['fecha_pago'], metodo)
+                self.db_manager.editar_pago(pago_id, pago['dni'], monto, pago['fecha_pago'], metodo, meses_var.get())
                 self.refrescar_pagos()
                 messagebox.showinfo("Éxito", "Pago actualizado")
                 win.destroy()
@@ -2521,14 +2763,43 @@ class SomaEntrenamientosApp:
         self.root.wait_window(dialog)
     
     def create_widgets(self):
-        # Crear notebook (tabs) con acentos naranjas
+        # ── Header de branding ──────────────────────────────────────────────
+        header = ctk.CTkFrame(self.root, fg_color=COLORS['SOMA_ORANGE'], height=54, corner_radius=0)
+        header.pack(fill="x", side="top")
+        header.pack_propagate(False)
+
+        # Logo (si existe) + nombre de la app
+        logo_img = load_custom_image("logo_soma.png", size=(36, 36))
+        if logo_img:
+            ctk.CTkLabel(header, image=logo_img, text="", fg_color="transparent").pack(
+                side="left", padx=(16, 6), pady=9)
+
+        ctk.CTkLabel(
+            header,
+            text="SOMA Entrenamientos",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=COLORS['WHITE'],
+            fg_color="transparent"
+        ).pack(side="left", padx=(4, 0), pady=9)
+
+        ctk.CTkLabel(
+            header,
+            text="Sistema de Gestión",
+            font=ctk.CTkFont(size=12),
+            text_color="#FFD0C0",
+            fg_color="transparent"
+        ).pack(side="right", padx=20, pady=9)
+
+        # ── Notebook (tabs) ─────────────────────────────────────────────────
         self.notebook = ctk.CTkTabview(
             self.root,
-            segmented_button_fg_color=COLORS.get('WHITE', '#FFFFFF'),
-            segmented_button_selected_color=COLORS.get('SOMA_ORANGE', '#E6461A'),
-            segmented_button_selected_hover_color=COLORS.get('SOMA_ORANGE_DARK', '#FC3903')
+            segmented_button_fg_color=COLORS['SURFACE_GRAY'],
+            segmented_button_selected_color=COLORS['SOMA_ORANGE'],
+            segmented_button_selected_hover_color=COLORS['SOMA_ORANGE_DARK'],
+            segmented_button_unselected_color=COLORS['SURFACE_GRAY'],
+            segmented_button_unselected_hover_color=COLORS['BORDER_SUBTLE'],
         )
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=(6, 10))
 
         # Pestaña Consulta (Kiosco)
         self.notebook.add("Consulta")

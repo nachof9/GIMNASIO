@@ -5,17 +5,33 @@ from pathlib import Path
 
 # Colores oficiales
 COLORS = {
-    'SOMA_ORANGE': '#E6461A',
-    "SUCCESS_GREEN": "#28a745",
-    "INFO_BLUE": "#17a2b8",
-    'ACTIVE_GREEN': '#4CAF50', 
-    'ERROR_RED': '#F44336',
-    'TEXT_DARK': '#1B1B1B',
-    'WHITE': '#FFFFFF',
-    'TEXT_SECONDARY': '#6C757D',
-    'SOMA_ORANGE_DARK': "#FC3903",
-    'EXPIRED_RED': '#F44336',
-    'WARNING_AMBER': '#FF9800'    
+    # Marca Soma
+    'SOMA_ORANGE':       '#E6461A',
+    'SOMA_ORANGE_DARK':  '#C93D16',
+    'SOMA_ORANGE_LIGHT': '#FFF0EB',   # naranja muy claro para fondos de acento
+
+    # Estados
+    'ACTIVE_GREEN':      '#2E9E4F',
+    'EXPIRED_RED':       '#D93025',
+    'WARNING_AMBER':     '#F59E0B',
+    'SUCCESS_GREEN':     '#2E9E4F',
+    'ERROR_RED':         '#D93025',
+    'INFO_BLUE':         '#2563EB',
+
+    # Tipografía
+    'TEXT_DARK':         '#1A1A1A',
+    'TEXT_SECONDARY':    '#6B7280',
+    'WHITE':             '#FFFFFF',
+
+    # Superficies y bordes
+    'CARD_BG':           '#FFFFFF',
+    'BORDER_SUBTLE':     '#E5E7EB',
+    'SURFACE_GRAY':      '#F3F4F6',
+    'DARK_SURFACE':      '#2B2B2B',
+
+    # Header de app
+    'HEADER_BG':         '#E6461A',
+    'HEADER_TEXT':       '#FFFFFF',
 }
 
 # Configuración de fuentes globales

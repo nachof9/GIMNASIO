@@ -65,11 +65,31 @@ class DatabaseManager:
                     fecha DATETIME
                 )
             ''')
-            
+
+            # Tabla grupos familiares
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS grupos_familiares (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre          TEXT NOT NULL,
+                    precio_especial REAL,
+                    fecha_alta      DATE
+                )
+            ''')
+
             # Índices
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_pagos_dni_fecha ON pagos(dni, fecha_pago)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_ingresos_fecha ON ingresos(fecha)')
-            
+
+            # Migraciones de columnas (compatibilidad con DBs anteriores)
+            for migration in [
+                'ALTER TABLE pagos ADD COLUMN meses INTEGER NOT NULL DEFAULT 1',
+                'ALTER TABLE socios ADD COLUMN grupo_id INTEGER REFERENCES grupos_familiares(id)',
+            ]:
+                try:
+                    cursor.execute(migration)
+                except sqlite3.OperationalError:
+                    pass  # La columna ya existe
+
             conn.commit()
     
     def backup_automatico(self):
@@ -204,16 +224,16 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()]
     
     # PAGOS
-    def registrar_pago(self, dni: int, monto: float, fecha_pago: str, metodo: str) -> None:
+    def registrar_pago(self, dni: int, monto: float, fecha_pago: str, metodo: str, meses: int = 1) -> None:
         """Registra un pago"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO pagos (dni, monto, fecha_pago, metodo_pago)
-                VALUES (?, ?, ?, ?)
-            ''', (dni, monto, fecha_pago, metodo))
+                INSERT INTO pagos (dni, monto, fecha_pago, metodo_pago, meses)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (dni, monto, fecha_pago, metodo, meses))
             conn.commit()
-            logging.info(f"Pago registrado: DNI {dni}, ${monto}, {metodo}")
+            logging.info(f"Pago registrado: DNI {dni}, ${monto}, {meses} mes(es), {metodo}")
     
     def obtener_pago(self, pago_id: int) -> Optional[Dict]:
         """Obtiene un pago por ID"""
@@ -224,7 +244,7 @@ class DatabaseManager:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def editar_pago(self, pago_id: int, dni: int, monto: float, fecha_pago: str, metodo: str) -> None:
+    def editar_pago(self, pago_id: int, dni: int, monto: float, fecha_pago: str, metodo: str, meses: int = 1) -> None:
         """Edita un pago existente"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -234,13 +254,13 @@ class DatabaseManager:
                 raise ValueError(f"No existe socio con DNI {dni}")
             cursor.execute('''
                 UPDATE pagos
-                SET dni = ?, monto = ?, fecha_pago = ?, metodo_pago = ?
+                SET dni = ?, monto = ?, fecha_pago = ?, metodo_pago = ?, meses = ?
                 WHERE id = ?
-            ''', (dni, monto, fecha_pago, metodo, pago_id))
+            ''', (dni, monto, fecha_pago, metodo, meses, pago_id))
             if cursor.rowcount == 0:
                 raise ValueError(f"Pago id {pago_id} no encontrado")
             conn.commit()
-            logging.info(f"Pago editado: ID {pago_id} (DNI {dni}, ${monto}, {metodo})")
+            logging.info(f"Pago editado: ID {pago_id} (DNI {dni}, ${monto}, {meses} mes(es), {metodo})")
 
     def eliminar_pago(self, pago_id: int) -> None:
         """Elimina un pago por ID"""
@@ -274,28 +294,36 @@ class DatabaseManager:
     
     # LISTADOS Y ESTADOS
     def socios_con_estado(self) -> List[Dict]:
-        """Obtiene todos los socios con su estado calculado"""
+        """Obtiene todos los socios con su estado calculado usando la duración real de cada pago"""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT s.dni, s.nombre, s.email, s.telefono, s.fecha_alta,
-                       MAX(p.fecha_pago) as ultimo_pago,
-                       CASE 
-                           WHEN MAX(p.fecha_pago) IS NULL THEN 'Vencido'
-                           WHEN date(MAX(p.fecha_pago), '+{} days') >= date('now') THEN 'Activo'
+                       s.grupo_id,
+                       g.nombre AS grupo_nombre,
+                       p.fecha_pago AS ultimo_pago,
+                       COALESCE(p.meses, 1) AS meses_ultimo_pago,
+                       CASE
+                           WHEN p.fecha_pago IS NULL THEN 'Vencido'
+                           WHEN date(p.fecha_pago, '+' || (COALESCE(p.meses, 1) * 30) || ' days') >= date('now') THEN 'Activo'
                            ELSE 'Vencido'
-                       END as estado,
-                       CASE 
-                           WHEN MAX(p.fecha_pago) IS NOT NULL 
-                           THEN date(MAX(p.fecha_pago), '+{} days')
+                       END AS estado,
+                       CASE
+                           WHEN p.fecha_pago IS NOT NULL
+                           THEN date(p.fecha_pago, '+' || (COALESCE(p.meses, 1) * 30) || ' days')
                            ELSE NULL
-                       END as fecha_vencimiento
+                       END AS fecha_vencimiento
                 FROM socios s
-                LEFT JOIN pagos p ON s.dni = p.dni
-                GROUP BY s.dni, s.nombre, s.email, s.telefono, s.fecha_alta
+                LEFT JOIN grupos_familiares g ON s.grupo_id = g.id
+                LEFT JOIN pagos p ON p.id = (
+                    SELECT id FROM pagos p2
+                    WHERE p2.dni = s.dni
+                    ORDER BY fecha_pago DESC
+                    LIMIT 1
+                )
                 ORDER BY s.nombre
-            '''.format(DIAS_CUOTA, DIAS_CUOTA))
+            ''')
             return [dict(row) for row in cursor.fetchall()]
     
     def socios_vencidos(self) -> List[Dict]:
@@ -316,14 +344,16 @@ class DatabaseManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT MAX(fecha_pago) as ultimo_pago
+                SELECT fecha_pago, COALESCE(meses, 1) as meses
                 FROM pagos WHERE dni=?
+                ORDER BY fecha_pago DESC LIMIT 1
             ''', (dni,))
             result = cursor.fetchone()
-            ultimo_pago = result[0] if result and result[0] else None
-            
-            if ultimo_pago:
-                fecha_vencimiento = datetime.strptime(ultimo_pago, '%Y-%m-%d') + timedelta(days=DIAS_CUOTA)
+
+            if result and result[0]:
+                ultimo_pago, meses = result
+                dias = meses * 30
+                fecha_vencimiento = datetime.strptime(ultimo_pago, '%Y-%m-%d') + timedelta(days=dias)
                 estado = 'Activo' if fecha_vencimiento >= datetime.now() else 'Vencido'
                 return {
                     'estado': estado,
@@ -543,3 +573,101 @@ class DatabaseManager:
     def obtener_socio_por_dni(self, dni):
         """Obtiene un socio por DNI (alias para obtener_socio)"""
         return self.obtener_socio(dni)
+
+    # GRUPOS FAMILIARES
+    def crear_grupo(self, nombre: str, precio_especial: Optional[float] = None) -> int:
+        """Crea un nuevo grupo familiar y retorna su ID"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO grupos_familiares (nombre, precio_especial, fecha_alta)
+                VALUES (?, ?, ?)
+            ''', (nombre.strip(), precio_especial, datetime.now().strftime('%Y-%m-%d')))
+            conn.commit()
+            grupo_id = cursor.lastrowid
+            logging.info(f"Grupo creado: ID {grupo_id}, '{nombre}'")
+            return grupo_id
+
+    def editar_grupo(self, grupo_id: int, nombre: str, precio_especial: Optional[float] = None) -> None:
+        """Edita un grupo familiar existente"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE grupos_familiares SET nombre=?, precio_especial=? WHERE id=?
+            ''', (nombre.strip(), precio_especial, grupo_id))
+            if cursor.rowcount == 0:
+                raise ValueError(f"Grupo ID {grupo_id} no encontrado")
+            conn.commit()
+            logging.info(f"Grupo editado: ID {grupo_id}")
+
+    def eliminar_grupo(self, grupo_id: int) -> None:
+        """Elimina un grupo y desvincula a sus miembros (no los elimina)"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE socios SET grupo_id=NULL WHERE grupo_id=?', (grupo_id,))
+            cursor.execute('DELETE FROM grupos_familiares WHERE id=?', (grupo_id,))
+            conn.commit()
+            logging.info(f"Grupo eliminado: ID {grupo_id}")
+
+    def obtener_grupo(self, grupo_id: int) -> Optional[Dict]:
+        """Obtiene un grupo por ID"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM grupos_familiares WHERE id=?', (grupo_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def listar_grupos(self) -> List[Dict]:
+        """Lista todos los grupos con el conteo de miembros"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT g.id, g.nombre, g.precio_especial, g.fecha_alta,
+                       COUNT(s.dni) AS cantidad_miembros
+                FROM grupos_familiares g
+                LEFT JOIN socios s ON s.grupo_id = g.id
+                GROUP BY g.id
+                ORDER BY g.nombre
+            ''')
+            return [dict(row) for row in cursor.fetchall()]
+
+    def obtener_miembros_grupo(self, grupo_id: int) -> List[Dict]:
+        """Obtiene los socios que pertenecen a un grupo"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT dni, nombre, email, telefono FROM socios
+                WHERE grupo_id=? ORDER BY nombre
+            ''', (grupo_id,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def asignar_socio_a_grupo(self, dni: int, grupo_id: int) -> None:
+        """Asigna un socio a un grupo familiar"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE socios SET grupo_id=? WHERE dni=?', (grupo_id, dni))
+            conn.commit()
+            logging.info(f"Socio DNI {dni} asignado al grupo {grupo_id}")
+
+    def remover_socio_de_grupo(self, dni: int) -> None:
+        """Remueve un socio de su grupo familiar"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE socios SET grupo_id=NULL WHERE dni=?', (dni,))
+            conn.commit()
+            logging.info(f"Socio DNI {dni} removido de su grupo")
+
+    def registrar_pago_grupal(self, grupo_id: int, monto: float, fecha_pago: str,
+                               metodo: str, meses: int = 1) -> int:
+        """Registra un pago individual para cada miembro del grupo.
+        Retorna la cantidad de pagos creados."""
+        miembros = self.obtener_miembros_grupo(grupo_id)
+        if not miembros:
+            raise ValueError("El grupo no tiene miembros")
+        for socio in miembros:
+            self.registrar_pago(socio['dni'], monto, fecha_pago, metodo, meses)
+        logging.info(f"Pago grupal: grupo {grupo_id}, {len(miembros)} pagos, ${monto}, {meses} mes(es)")
+        return len(miembros)
