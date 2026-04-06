@@ -2238,74 +2238,7 @@ class PagosFrame(ctk.CTkFrame):
             menu.grab_release()
 
     def _abrir_editor_pago_simple(self, pago_id: int):
-        pago = self.db_manager.obtener_pago(pago_id)
-        if not pago:
-            messagebox.showerror("Error", "Pago no encontrado")
-            return
-
-        win = ctk.CTkToplevel(self)
-        win.title(f"Editar Pago #{pago_id}")
-        win.geometry("380x340")
-        win.resizable(False, False)
-        win.grab_set()
-
-        ctk.CTkLabel(win, text=f"DNI: {pago['dni']}  |  Fecha: {pago['fecha_pago']}").pack(pady=(15, 5))
-
-        # Monto
-        monto_frame = ctk.CTkFrame(win, fg_color="transparent")
-        monto_frame.pack(fill='x', padx=20, pady=10)
-        ctk.CTkLabel(monto_frame, text="Monto:").pack(side='left')
-        monto_entry = ctk.CTkEntry(monto_frame)
-        monto_entry.insert(0, str(pago['monto']))
-        monto_entry.pack(side='right', fill='x', expand=True, padx=(20,0))
-
-        # Duración
-        duracion_frame = ctk.CTkFrame(win, fg_color="transparent")
-        duracion_frame.pack(fill='x', padx=20, pady=10)
-        ctk.CTkLabel(duracion_frame, text="Duración:").pack(anchor='w', pady=(0, 5))
-        meses_actual = int(pago.get('meses', 1) or 1)
-        if meses_actual not in (1, 3, 6, 12):
-            meses_actual = 1
-        meses_var = ctk.IntVar(value=meses_actual)
-        meses_btns = ctk.CTkFrame(duracion_frame, fg_color="transparent")
-        meses_btns.pack(fill='x')
-        for m, lbl in [(1, "1 mes"), (3, "3 m"), (6, "6 m"), (12, "12 m")]:
-            ctk.CTkRadioButton(meses_btns, text=lbl, variable=meses_var, value=m).pack(side='left', padx=4)
-
-        # Método
-        metodo_frame = ctk.CTkFrame(win, fg_color="transparent")
-        metodo_frame.pack(fill='x', padx=20, pady=10)
-        ctk.CTkLabel(metodo_frame, text="Método:").pack(side='left')
-        metodo_var = ctk.StringVar(value=pago['metodo_pago'])
-        metodo_combo = ctk.CTkComboBox(metodo_frame, values=["efectivo", "transferencia"], variable=metodo_var)
-        metodo_combo.pack(side='right', fill='x', expand=True, padx=(20,0))
-
-        # Botones
-        btns = ctk.CTkFrame(win, fg_color="transparent")
-        btns.pack(fill='x', padx=20, pady=15)
-
-        def guardar():
-            try:
-                monto = float(monto_entry.get().strip())
-                if monto <= 0:
-                    raise ValueError()
-            except Exception:
-                messagebox.showerror("Error", "Monto inválido (debe ser mayor a 0)")
-                return
-            metodo = metodo_var.get()
-            if metodo not in ("efectivo", "transferencia"):
-                messagebox.showerror("Error", "Método inválido")
-                return
-            try:
-                self.db_manager.editar_pago(pago_id, pago['dni'], monto, pago['fecha_pago'], metodo, meses_var.get())
-                self.refrescar_pagos()
-                messagebox.showinfo("Éxito", "Pago actualizado")
-                win.destroy()
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo actualizar: {str(e)}")
-
-        ctk.CTkButton(btns, text="Guardar", command=guardar, fg_color=COLORS['SUCCESS_GREEN']).pack(side='left')
-        ctk.CTkButton(btns, text="Cancelar", command=win.destroy).pack(side='right')
+        EditarPagoWindow(self, self.db_manager, pago_id, callback=self.refrescar_pagos)
 
     def _eliminar_pago_por_id(self, pago_id: int):
         if not messagebox.askyesno("Confirmar eliminación", "¿Eliminar el pago seleccionado? Esta acción no se puede deshacer."):
