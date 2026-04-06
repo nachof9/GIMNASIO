@@ -253,15 +253,15 @@ class RegistrarPagoWindow:
         # Ventana modal
         self.window = tk.Toplevel(parent)
         self.window.title("Registrar Pago")
-        self.window.geometry("500x600")
+        self.window.geometry("500x680")
         self.window.transient(parent)
         self.window.grab_set()
-        
+
         # Centrar ventana
         self.window.update_idletasks()
         x = (self.window.winfo_screenwidth() // 2) - (500 // 2)
-        y = (self.window.winfo_screenheight() // 2) - (600 // 2)
-        self.window.geometry(f"500x600+{x}+{y}")
+        y = (self.window.winfo_screenheight() // 2) - (680 // 2)
+        self.window.geometry(f"500x680+{x}+{y}")
         
         self.create_widgets()
         
@@ -308,13 +308,24 @@ class RegistrarPagoWindow:
         ttk.Label(main_frame, text="Monto *", font=('TkDefaultFont', 18)).pack(anchor="w")
         self.monto_entry = ttk.Entry(main_frame, font=('TkDefaultFont', 18))
         self.monto_entry.pack(fill="x", pady=(0, 15))
-        
+
+        # Duración
+        ttk.Label(main_frame, text="Duración *", font=('TkDefaultFont', 18)).pack(anchor="w")
+        self.meses_var = tk.IntVar(self.window, value=1)
+        meses_frame = ttk.Frame(main_frame)
+        meses_frame.pack(fill="x", pady=(0, 15))
+        for meses, label in [(1, "1 mes"), (3, "3 meses"), (6, "6 meses"), (12, "12 meses")]:
+            ttk.Radiobutton(
+                meses_frame, text=label, variable=self.meses_var,
+                value=meses, font=('TkDefaultFont', 16)
+            ).pack(side="left", padx=(0, 15))
+
         # Fecha
         ttk.Label(main_frame, text="Fecha de Pago *", font=('TkDefaultFont', 18)).pack(anchor="w")
         self.fecha_entry = ttk.Entry(main_frame, font=('TkDefaultFont', 18))
         self.fecha_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
         self.fecha_entry.pack(fill="x", pady=(0, 15))
-        
+
         # Método de pago
         ttk.Label(main_frame, text="Método de Pago *", font=('TkDefaultFont', 18)).pack(anchor="w")
         self.metodo_var = tk.StringVar(self.window,value="efectivo")
@@ -456,17 +467,19 @@ class RegistrarPagoWindow:
     def registrar(self):
         if not self.validar_datos():
             return
-        
+
         try:
             dni = int(self.dni_entry.get().strip())
             monto = float(self.monto_entry.get().strip())
             fecha = self.fecha_entry.get().strip()
             metodo = self.metodo_var.get()
-            
-            self.db_manager.registrar_pago(dni, monto, fecha, metodo)
-            
+            meses = self.meses_var.get()
+
+            self.db_manager.registrar_pago(dni, monto, fecha, metodo, meses)
+
             socio = self.db_manager.obtener_socio(dni)
-            messagebox.showinfo("Éxito", f"Pago registrado para {socio['nombre']}\n${monto} - {metodo}")
+            duracion_txt = f"{meses} mes" if meses == 1 else f"{meses} meses"
+            messagebox.showinfo("Éxito", f"Pago registrado para {socio['nombre']}\n${monto} — {duracion_txt} — {metodo}")
             
             if self.callback:
                 self.callback()
@@ -492,15 +505,15 @@ class EditarPagoWindow:
 
         self.window = tk.Toplevel(parent)
         self.window.title("Editar Pago")
-        self.window.geometry("500x500")
+        self.window.geometry("500x580")
         self.window.transient(parent)
         self.window.grab_set()
 
         # Centrar
         self.window.update_idletasks()
         x = (self.window.winfo_screenwidth() // 2) - (500 // 2)
-        y = (self.window.winfo_screenheight() // 2) - (500 // 2)
-        self.window.geometry(f"500x500+{x}+{y}")
+        y = (self.window.winfo_screenheight() // 2) - (580 // 2)
+        self.window.geometry(f"500x580+{x}+{y}")
 
         self._create_widgets()
 
@@ -535,6 +548,21 @@ class EditarPagoWindow:
         self.monto_entry = ttk.Entry(main, font=('TkDefaultFont', 18))
         self.monto_entry.insert(0, str(self.pago['monto']))
         self.monto_entry.pack(fill='x', pady=(0, 10))
+
+        # Duración
+        ttk.Label(main, text="Duración *", font=('TkDefaultFont', 18)).pack(anchor='w')
+        meses_actual = int(self.pago.get('meses', 1) or 1)
+        # Si el valor guardado no es una opción estándar, usar 1 como fallback
+        if meses_actual not in (1, 3, 6, 12):
+            meses_actual = 1
+        self.meses_var = tk.IntVar(self.window, value=meses_actual)
+        meses_frame = ttk.Frame(main)
+        meses_frame.pack(fill='x', pady=(0, 10))
+        for meses, label in [(1, "1 mes"), (3, "3 meses"), (6, "6 meses"), (12, "12 meses")]:
+            ttk.Radiobutton(
+                meses_frame, text=label, variable=self.meses_var,
+                value=meses, font=('TkDefaultFont', 16)
+            ).pack(side='left', padx=(0, 15))
 
         # Fecha
         ttk.Label(main, text="Fecha de Pago *", font=('TkDefaultFont', 18)).pack(anchor='w')
@@ -650,8 +678,10 @@ class EditarPagoWindow:
             messagebox.showerror("Error", "Seleccione un método de pago")
             return
 
+        meses = self.meses_var.get()
+
         try:
-            self.db_manager.editar_pago(self.pago_id, int(dni_text), monto, fecha, metodo)
+            self.db_manager.editar_pago(self.pago_id, int(dni_text), monto, fecha, metodo, meses)
             messagebox.showinfo("Éxito", "Pago actualizado correctamente")
             if self.callback:
                 self.callback()

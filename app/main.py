@@ -1897,26 +1897,28 @@ class PagosFrame(ctk.CTkFrame):
         table_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         
         # Crear Treeview para pagos
-        columns = ('ID', 'DNI', 'Nombre', 'Monto', 'Fecha', 'Método', 'Estado')
+        columns = ('ID', 'DNI', 'Nombre', 'Monto', 'Duración', 'Fecha', 'Método', 'Estado')
         self.pagos_tree = ttk.Treeview(table_frame, columns=columns, show='headings', height=15)
-        
+
         # Configurar columnas
         self.pagos_tree.heading('ID', text='ID')
         self.pagos_tree.heading('DNI', text='DNI')
         self.pagos_tree.heading('Nombre', text='Nombre del Socio')
         self.pagos_tree.heading('Monto', text='Monto')
+        self.pagos_tree.heading('Duración', text='Duración')
         self.pagos_tree.heading('Fecha', text='Fecha de Pago')
         self.pagos_tree.heading('Método', text='Método')
         self.pagos_tree.heading('Estado', text='Estado')
-        
+
         # Configurar anchos de columna
         self.pagos_tree.column('ID', width=50)
         self.pagos_tree.column('DNI', width=100)
-        self.pagos_tree.column('Nombre', width=200)
-        self.pagos_tree.column('Monto', width=100)
-        self.pagos_tree.column('Fecha', width=120)
+        self.pagos_tree.column('Nombre', width=185)
+        self.pagos_tree.column('Monto', width=90)
+        self.pagos_tree.column('Duración', width=80)
+        self.pagos_tree.column('Fecha', width=110)
         self.pagos_tree.column('Método', width=100)
-        self.pagos_tree.column('Estado', width=100)
+        self.pagos_tree.column('Estado', width=110)
         
         # Scrollbar
         scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.pagos_tree.yview)
@@ -1969,24 +1971,29 @@ class PagosFrame(ctk.CTkFrame):
                 # Obtener nombre del socio
                 socio = self.db_manager.obtener_socio(dni)
                 nombre = socio['nombre'] if socio else "Socio no encontrado"
-                
-                # Calcular estado basado en la fecha
+
+                # Calcular estado usando la duración real del pago
+                meses = int(pago.get('meses', 1) or 1)
+                dias_vigencia = meses * 30
                 fecha_pago = datetime.strptime(pago['fecha_pago'], '%Y-%m-%d')
                 dias_transcurridos = (datetime.now() - fecha_pago).days
-                
-                if dias_transcurridos <= 30:
+
+                if dias_transcurridos <= dias_vigencia:
                     estado = "✅ Vigente"
-                elif dias_transcurridos <= 60:
+                elif dias_transcurridos <= dias_vigencia + 30:
                     estado = "⚠️ Vencido"
                 else:
                     estado = "❌ Muy Vencido"
-                
+
+                duracion_txt = f"{meses} mes" if meses == 1 else f"{meses} meses"
+
                 # Insertar en la tabla
                 self.pagos_tree.insert('', 'end', values=(
                     pago['id'],
                     pago['dni'],
                     nombre,
                     f"${pago['monto']:.2f}",
+                    duracion_txt,
                     pago['fecha_pago'],
                     pago['metodo_pago'].title(),
                     estado
@@ -2031,22 +2038,27 @@ class PagosFrame(ctk.CTkFrame):
             for pago in pagos:
                 socio = self.db_manager.obtener_socio_por_dni(pago['dni'])
                 nombre = socio['nombre'] if socio else "Socio no encontrado"
-                
+
+                meses = int(pago.get('meses', 1) or 1)
+                dias_vigencia = meses * 30
                 fecha_pago = datetime.strptime(pago['fecha_pago'], '%Y-%m-%d')
                 dias_transcurridos = (datetime.now() - fecha_pago).days
-                
-                if dias_transcurridos <= 30:
+
+                if dias_transcurridos <= dias_vigencia:
                     estado = "✅ Vigente"
-                elif dias_transcurridos <= 60:
+                elif dias_transcurridos <= dias_vigencia + 30:
                     estado = "⚠️ Vencido"
                 else:
                     estado = "❌ Muy Vencido"
-                
+
+                duracion_txt = f"{meses} mes" if meses == 1 else f"{meses} meses"
+
                 self.pagos_tree.insert('', 'end', values=(
                     pago['id'],
                     pago['dni'],
                     nombre,
                     f"${pago['monto']:.2f}",
+                    duracion_txt,
                     pago['fecha_pago'],
                     pago['metodo_pago'].title(),
                     estado
@@ -2302,7 +2314,7 @@ class PagosFrame(ctk.CTkFrame):
 
         win = ctk.CTkToplevel(self)
         win.title(f"Editar Pago #{pago_id}")
-        win.geometry("380x260")
+        win.geometry("380x340")
         win.resizable(False, False)
         win.grab_set()
 
@@ -2315,6 +2327,19 @@ class PagosFrame(ctk.CTkFrame):
         monto_entry = ctk.CTkEntry(monto_frame)
         monto_entry.insert(0, str(pago['monto']))
         monto_entry.pack(side='right', fill='x', expand=True, padx=(20,0))
+
+        # Duración
+        duracion_frame = ctk.CTkFrame(win, fg_color="transparent")
+        duracion_frame.pack(fill='x', padx=20, pady=10)
+        ctk.CTkLabel(duracion_frame, text="Duración:").pack(anchor='w', pady=(0, 5))
+        meses_actual = int(pago.get('meses', 1) or 1)
+        if meses_actual not in (1, 3, 6, 12):
+            meses_actual = 1
+        meses_var = ctk.IntVar(value=meses_actual)
+        meses_btns = ctk.CTkFrame(duracion_frame, fg_color="transparent")
+        meses_btns.pack(fill='x')
+        for m, lbl in [(1, "1 mes"), (3, "3 m"), (6, "6 m"), (12, "12 m")]:
+            ctk.CTkRadioButton(meses_btns, text=lbl, variable=meses_var, value=m).pack(side='left', padx=4)
 
         # Método
         metodo_frame = ctk.CTkFrame(win, fg_color="transparent")
@@ -2341,8 +2366,7 @@ class PagosFrame(ctk.CTkFrame):
                 messagebox.showerror("Error", "Método inválido")
                 return
             try:
-                # Solo monto y método. Mantener DNI y fecha originales
-                self.db_manager.editar_pago(pago_id, pago['dni'], monto, pago['fecha_pago'], metodo)
+                self.db_manager.editar_pago(pago_id, pago['dni'], monto, pago['fecha_pago'], metodo, meses_var.get())
                 self.refrescar_pagos()
                 messagebox.showinfo("Éxito", "Pago actualizado")
                 win.destroy()

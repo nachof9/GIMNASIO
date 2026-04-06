@@ -57,14 +57,18 @@ class DashboardManager:
         cursor.execute("SELECT COUNT(*) FROM socios")
         total_socios = cursor.fetchone()[0]
         
-        # Socios activos (con cuota vigente)
-        fecha_limite = (datetime.now() - timedelta(days=DIAS_CUOTA)).strftime('%Y-%m-%d')
+        # Socios activos (cuota vigente según duración real de cada pago)
         cursor.execute("""
-            SELECT COUNT(DISTINCT s.dni) 
-            FROM socios s 
-            JOIN pagos p ON s.dni = p.dni 
-            WHERE p.fecha_pago >= ?
-        """, (fecha_limite,))
+            SELECT COUNT(DISTINCT s.dni)
+            FROM socios s
+            JOIN pagos p ON p.id = (
+                SELECT id FROM pagos p2
+                WHERE p2.dni = s.dni
+                ORDER BY fecha_pago DESC
+                LIMIT 1
+            )
+            WHERE date(p.fecha_pago, '+' || (COALESCE(p.meses, 1) * 30) || ' days') >= date('now')
+        """)
         socios_activos = cursor.fetchone()[0]
         
         # Ingresos del mes actual
@@ -129,16 +133,23 @@ class DashboardManager:
         alerts = []
         cursor = conn.cursor()
         
-        # Alertas de vencimientos próximos (calcula fecha de vencimiento real)
+        # Alertas de vencimientos próximos (usa duración real de cada último pago)
         for dias in ALERT_CONFIG["vencimiento_dias"]:
             sql = f"""
-                SELECT s.nombre, s.dni,
-                       DATE(MAX(p.fecha_pago), '+{DIAS_CUOTA} days') AS fecha_vencimiento,
-                       MAX(p.fecha_pago) AS ultima_cuota
-                FROM socios s
-                JOIN pagos p ON s.dni = p.dni
-                GROUP BY s.dni
-                HAVING DATE(MAX(p.fecha_pago), '+{DIAS_CUOTA} days') = DATE('now', '+{dias} days')
+                SELECT nombre, dni, fecha_vencimiento, ultima_cuota
+                FROM (
+                    SELECT s.nombre, s.dni,
+                           date(p.fecha_pago, '+' || (COALESCE(p.meses, 1) * 30) || ' days') AS fecha_vencimiento,
+                           p.fecha_pago AS ultima_cuota
+                    FROM socios s
+                    JOIN pagos p ON p.id = (
+                        SELECT id FROM pagos p2
+                        WHERE p2.dni = s.dni
+                        ORDER BY fecha_pago DESC
+                        LIMIT 1
+                    )
+                ) sub
+                WHERE fecha_vencimiento = DATE('now', '+{dias} days')
                 ORDER BY fecha_vencimiento ASC
                 LIMIT 5
             """
@@ -154,20 +165,25 @@ class DashboardManager:
                     "data": {"dias": dias, "socios": [dict(row) for row in vencimientos]}
                 })
         
-        # Alertas de socios inactivos (sin visitas)
+        # Alertas de socios inactivos (sin visitas, pero con cuota vigente)
         hace_x_dias = (datetime.now() - timedelta(days=ALERT_CONFIG["inactividad_dias"])).strftime('%Y-%m-%d')
         cursor.execute("""
             SELECT s.nombre, s.dni,
                    MAX(i.fecha) as ultima_visita,
-                   MAX(p.fecha_pago) as ultima_cuota
+                   p.fecha_pago as ultima_cuota
             FROM socios s
             LEFT JOIN ingresos i ON s.dni = i.dni
-            LEFT JOIN pagos p ON s.dni = p.dni
-            WHERE (i.fecha IS NULL OR i.fecha < ?) 
-            AND p.fecha_pago >= ?
+            JOIN pagos p ON p.id = (
+                SELECT id FROM pagos p2
+                WHERE p2.dni = s.dni
+                ORDER BY fecha_pago DESC
+                LIMIT 1
+            )
+            WHERE (i.fecha IS NULL OR i.fecha < ?)
+            AND date(p.fecha_pago, '+' || (COALESCE(p.meses, 1) * 30) || ' days') >= date('now')
             GROUP BY s.dni
             LIMIT 10
-        """, (hace_x_dias, (datetime.now() - timedelta(days=DIAS_CUOTA)).strftime('%Y-%m-%d')))
+        """, (hace_x_dias,))
         
         inactivos = cursor.fetchall()
         if inactivos:
@@ -188,15 +204,18 @@ class DashboardManager:
         actions = []
         cursor = conn.cursor()
         
-        # Acción: Renovar vencimientos próximos
-        fecha_limite = (datetime.now() - timedelta(days=DIAS_CUOTA - 3)).strftime('%Y-%m-%d')
+        # Acción: Renovar vencimientos próximos (en los próximos 3 días)
         cursor.execute("""
             SELECT COUNT(DISTINCT s.dni)
             FROM socios s
-            JOIN pagos p ON s.dni = p.dni
-            WHERE p.fecha_pago = ?
-        """, (fecha_limite,))
-        
+            JOIN pagos p ON p.id = (
+                SELECT id FROM pagos p2 WHERE p2.dni = s.dni
+                ORDER BY fecha_pago DESC LIMIT 1
+            )
+            WHERE date(p.fecha_pago, '+' || (COALESCE(p.meses, 1) * 30) || ' days')
+                  BETWEEN date('now') AND date('now', '+3 days')
+        """)
+
         vencimientos_3_dias = cursor.fetchone()[0]
         if vencimientos_3_dias > 0:
             actions.append({
@@ -207,16 +226,19 @@ class DashboardManager:
                 "priority": "high"
             })
         
-        # Acción: Contactar inactivos
+        # Acción: Contactar inactivos (activos sin visitas en 15 días)
         hace_15_dias = (datetime.now() - timedelta(days=15)).strftime('%Y-%m-%d')
         cursor.execute("""
             SELECT COUNT(DISTINCT s.dni)
             FROM socios s
             LEFT JOIN ingresos i ON s.dni = i.dni
-            LEFT JOIN pagos p ON s.dni = p.dni
-            WHERE (i.fecha IS NULL OR i.fecha < ?) 
-            AND p.fecha_pago >= ?
-        """, (hace_15_dias, (datetime.now() - timedelta(days=DIAS_CUOTA)).strftime('%Y-%m-%d')))
+            JOIN pagos p ON p.id = (
+                SELECT id FROM pagos p2 WHERE p2.dni = s.dni
+                ORDER BY fecha_pago DESC LIMIT 1
+            )
+            WHERE (i.fecha IS NULL OR i.fecha < ?)
+            AND date(p.fecha_pago, '+' || (COALESCE(p.meses, 1) * 30) || ' days') >= date('now')
+        """, (hace_15_dias,))
         
         inactivos_15_dias = cursor.fetchone()[0]
         if inactivos_15_dias > 0:

@@ -69,7 +69,13 @@ class DatabaseManager:
             # Índices
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_pagos_dni_fecha ON pagos(dni, fecha_pago)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_ingresos_fecha ON ingresos(fecha)')
-            
+
+            # Migración: agregar columna meses si no existe (compatibilidad con DBs anteriores)
+            try:
+                cursor.execute('ALTER TABLE pagos ADD COLUMN meses INTEGER NOT NULL DEFAULT 1')
+            except sqlite3.OperationalError:
+                pass  # La columna ya existe
+
             conn.commit()
     
     def backup_automatico(self):
@@ -204,16 +210,16 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()]
     
     # PAGOS
-    def registrar_pago(self, dni: int, monto: float, fecha_pago: str, metodo: str) -> None:
+    def registrar_pago(self, dni: int, monto: float, fecha_pago: str, metodo: str, meses: int = 1) -> None:
         """Registra un pago"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO pagos (dni, monto, fecha_pago, metodo_pago)
-                VALUES (?, ?, ?, ?)
-            ''', (dni, monto, fecha_pago, metodo))
+                INSERT INTO pagos (dni, monto, fecha_pago, metodo_pago, meses)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (dni, monto, fecha_pago, metodo, meses))
             conn.commit()
-            logging.info(f"Pago registrado: DNI {dni}, ${monto}, {metodo}")
+            logging.info(f"Pago registrado: DNI {dni}, ${monto}, {meses} mes(es), {metodo}")
     
     def obtener_pago(self, pago_id: int) -> Optional[Dict]:
         """Obtiene un pago por ID"""
@@ -224,7 +230,7 @@ class DatabaseManager:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def editar_pago(self, pago_id: int, dni: int, monto: float, fecha_pago: str, metodo: str) -> None:
+    def editar_pago(self, pago_id: int, dni: int, monto: float, fecha_pago: str, metodo: str, meses: int = 1) -> None:
         """Edita un pago existente"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -234,13 +240,13 @@ class DatabaseManager:
                 raise ValueError(f"No existe socio con DNI {dni}")
             cursor.execute('''
                 UPDATE pagos
-                SET dni = ?, monto = ?, fecha_pago = ?, metodo_pago = ?
+                SET dni = ?, monto = ?, fecha_pago = ?, metodo_pago = ?, meses = ?
                 WHERE id = ?
-            ''', (dni, monto, fecha_pago, metodo, pago_id))
+            ''', (dni, monto, fecha_pago, metodo, meses, pago_id))
             if cursor.rowcount == 0:
                 raise ValueError(f"Pago id {pago_id} no encontrado")
             conn.commit()
-            logging.info(f"Pago editado: ID {pago_id} (DNI {dni}, ${monto}, {metodo})")
+            logging.info(f"Pago editado: ID {pago_id} (DNI {dni}, ${monto}, {meses} mes(es), {metodo})")
 
     def eliminar_pago(self, pago_id: int) -> None:
         """Elimina un pago por ID"""
@@ -274,28 +280,33 @@ class DatabaseManager:
     
     # LISTADOS Y ESTADOS
     def socios_con_estado(self) -> List[Dict]:
-        """Obtiene todos los socios con su estado calculado"""
+        """Obtiene todos los socios con su estado calculado usando la duración real de cada pago"""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT s.dni, s.nombre, s.email, s.telefono, s.fecha_alta,
-                       MAX(p.fecha_pago) as ultimo_pago,
-                       CASE 
-                           WHEN MAX(p.fecha_pago) IS NULL THEN 'Vencido'
-                           WHEN date(MAX(p.fecha_pago), '+{} days') >= date('now') THEN 'Activo'
+                       p.fecha_pago AS ultimo_pago,
+                       COALESCE(p.meses, 1) AS meses_ultimo_pago,
+                       CASE
+                           WHEN p.fecha_pago IS NULL THEN 'Vencido'
+                           WHEN date(p.fecha_pago, '+' || (COALESCE(p.meses, 1) * 30) || ' days') >= date('now') THEN 'Activo'
                            ELSE 'Vencido'
-                       END as estado,
-                       CASE 
-                           WHEN MAX(p.fecha_pago) IS NOT NULL 
-                           THEN date(MAX(p.fecha_pago), '+{} days')
+                       END AS estado,
+                       CASE
+                           WHEN p.fecha_pago IS NOT NULL
+                           THEN date(p.fecha_pago, '+' || (COALESCE(p.meses, 1) * 30) || ' days')
                            ELSE NULL
-                       END as fecha_vencimiento
+                       END AS fecha_vencimiento
                 FROM socios s
-                LEFT JOIN pagos p ON s.dni = p.dni
-                GROUP BY s.dni, s.nombre, s.email, s.telefono, s.fecha_alta
+                LEFT JOIN pagos p ON p.id = (
+                    SELECT id FROM pagos p2
+                    WHERE p2.dni = s.dni
+                    ORDER BY fecha_pago DESC
+                    LIMIT 1
+                )
                 ORDER BY s.nombre
-            '''.format(DIAS_CUOTA, DIAS_CUOTA))
+            ''')
             return [dict(row) for row in cursor.fetchall()]
     
     def socios_vencidos(self) -> List[Dict]:
@@ -316,14 +327,16 @@ class DatabaseManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT MAX(fecha_pago) as ultimo_pago
+                SELECT fecha_pago, COALESCE(meses, 1) as meses
                 FROM pagos WHERE dni=?
+                ORDER BY fecha_pago DESC LIMIT 1
             ''', (dni,))
             result = cursor.fetchone()
-            ultimo_pago = result[0] if result and result[0] else None
-            
-            if ultimo_pago:
-                fecha_vencimiento = datetime.strptime(ultimo_pago, '%Y-%m-%d') + timedelta(days=DIAS_CUOTA)
+
+            if result and result[0]:
+                ultimo_pago, meses = result
+                dias = meses * 30
+                fecha_vencimiento = datetime.strptime(ultimo_pago, '%Y-%m-%d') + timedelta(days=dias)
                 estado = 'Activo' if fecha_vencimiento >= datetime.now() else 'Vencido'
                 return {
                     'estado': estado,
